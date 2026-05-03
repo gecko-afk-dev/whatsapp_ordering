@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: whatsapp_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: whatsapp_food
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: whatsapp_api
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: always
+
+volumes:
+  postgres_data:
