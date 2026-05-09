@@ -1,29 +1,52 @@
-version: '3.8'
 services:
   db:
     image: postgres:15-alpine
     container_name: whatsapp_db
+    restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: whatsapp_food
-    ports:
-      - "5432:5432"
+      # These now pull from your .env file dynamically
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-supersecret}
+      POSTGRES_DB: ${DB_NAME:-whatsapp_food}
+    # Security: No 'ports:' section. The DB is only accessible to 'app' on the internal Docker network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-whatsapp_food}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   app:
     build: .
     container_name: whatsapp_api
-    volumes:
-      - .:/app
-    ports:
-      - "8000:8000"
+    restart: always
+    # Security: No 'ports:' section. Only Caddy can talk to the app now.
     env_file:
       - .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Dynamically inject the DB URL
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-postgres}:${DB_PASSWORD:-supersecret}@db:5432/${DB_NAME:-whatsapp_food}
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy_proxy
     restart: always
+    ports:
+      - "80:80"     # HTTP (Required for Let's Encrypt validation)
+      - "443:443"   # HTTPS (Meta Webhooks & Dashboard)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data      # Stores the Let's Encrypt SSL certificates safely
+      - caddy_config:/config
+    depends_on:
+      - app
 
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
