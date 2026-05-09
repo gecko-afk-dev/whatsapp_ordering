@@ -3,7 +3,11 @@ from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
+<<<<<<< Updated upstream
 from datetime import datetime, timedelta, timezone
+=======
+from datetime import datetime, timedelta
+>>>>>>> Stashed changes
 from pydantic import BaseModel, EmailStr
 import json
 
@@ -107,6 +111,7 @@ async def login(request: LoginRequest):
             }
         )
 
+<<<<<<< Updated upstream
 # --- Setup Route (no auth — first-time bootstrap only) ---
 
 @router.post("/setup-admin")
@@ -138,13 +143,19 @@ async def setup_admin():
 
         return {"message": f"Admin user created: {admin_email}"}
 
+=======
+>>>>>>> Stashed changes
 # --- Admin Routes ---
 
 @router.get("/analytics/summary", response_model=AnalyticsSummary)
 async def get_analytics_summary(current_user: User = Depends(get_current_admin)):
     """Get overall business analytics."""
     async with AsyncSessionLocal() as db:
+<<<<<<< Updated upstream
         today = datetime.now(timezone.utc).date()
+=======
+        today = datetime.utcnow().date()
+>>>>>>> Stashed changes
         month_start = today.replace(day=1)
 
         # Total restaurants
@@ -196,7 +207,11 @@ async def get_analytics_summary(current_user: User = Depends(get_current_admin))
 async def get_restaurant_analytics(current_user: User = Depends(get_current_admin)):
     """Get analytics for each restaurant."""
     async with AsyncSessionLocal() as db:
+<<<<<<< Updated upstream
         today = datetime.now(timezone.utc).date()
+=======
+        today = datetime.utcnow().date()
+>>>>>>> Stashed changes
         month_start = today.replace(day=1)
 
         # Get all restaurants with their metrics
@@ -317,7 +332,11 @@ async def update_restaurant(
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
 
+<<<<<<< Updated upstream
         update_data = updates.model_dump(exclude_unset=True)
+=======
+        update_data = updates.dict(exclude_unset=True)
+>>>>>>> Stashed changes
         for field, value in update_data.items():
             setattr(restaurant, field, value)
 
@@ -379,7 +398,11 @@ async def get_restaurant_dashboard(current_user: User = Depends(get_current_rest
             raise HTTPException(status_code=404, detail="Restaurant not found")
 
         # Get today's orders
+<<<<<<< Updated upstream
         today = datetime.now(timezone.utc).date()
+=======
+        today = datetime.utcnow().date()
+>>>>>>> Stashed changes
         today_orders_result = await db.execute(
             select(func.count(Order.id), func.sum(Order.total_price)).where(
                 and_(

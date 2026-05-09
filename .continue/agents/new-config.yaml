@@ -1,0 +1,8 @@
+name: OpenAI Config
+version: 0.0.1
+schema: v1
+models:
+  - name: GPT-4o-mini
+    provider: openai
+    model: gpt-4o-mini  # Or gpt-4o, o1-mini, etc.
+    apiKey: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

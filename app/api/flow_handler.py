@@ -284,7 +284,11 @@ async def process_flow_request(payload: dict):
 
         cart = await get_or_create_cart(db, wa_id, restaurant_id)
 
+<<<<<<< Updated upstream
         if action == "INIT":
+=======
+        if action == "INIT" or screen == "CATEGORIES_SCREEN":
+>>>>>>> Stashed changes
             cat_query = await db.execute(
                 select(Category).where(Category.restaurant_id == restaurant_id)
             )

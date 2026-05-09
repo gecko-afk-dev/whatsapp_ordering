@@ -21,7 +21,10 @@ env/
 # IDE
 .vscode/
 .idea/
+<<<<<<< Updated upstream
 .continue/
+=======
+>>>>>>> Stashed changes
 
 # OS
 .DS_Store
