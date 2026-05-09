@@ -1,0 +1,110 @@
+import json
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models import Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod
+
+class OrderService:
+    @staticmethod
+    async def process_flow_submission(db: AsyncSession, wa_id: str, restaurant_id: int, flow_data: dict):
+        """
+        Takes the data from the WhatsApp Flow and turns it into a real Order
+        with individual OrderItems in the database.
+        """
+        total_price = 0.0
+
+        selected_items = flow_data.get("selected_items")
+        if not isinstance(selected_items, list) or not selected_items:
+            raise ValueError("Order payload must include at least one selected item.")
+
+        # 1. Determine if it's Delivery or Pickup
+        method_str = flow_data.get("method", "delivery")
+        method = (
+            FulfillmentMethod.DELIVERY
+            if method_str == "delivery"
+            else FulfillmentMethod.PICKUP
+        )
+
+        # 2. Create the Main Order record
+        new_order = Order(
+            restaurant_id=restaurant_id,
+            customer_wa_id=wa_id,
+            fulfillment_method=method,
+            status=OrderStatus.PENDING,  # Waiting for location/confirmation
+            total_price=0.0,
+        )
+        db.add(new_order)
+        await db.flush()  # This gives us the Order ID to link items to
+
+        valid_item_count = 0
+
+        # 3. Process each item selected in the Flow
+        for selection in selected_items:
+            try:
+                item_id = int(selection["id"])
+            except (TypeError, ValueError, KeyError):
+                raise ValueError("Each selected item must include a valid numeric id.")
+
+            qty = int(selection.get("qty", 1) or 1)
+            if qty < 1:
+                raise ValueError("Item quantity must be at least 1.")
+
+            # Fetch the item from DB to get the official price (prevents price hacking)
+            res = await db.execute(select(MenuItem).where(MenuItem.id == item_id))
+            item = res.scalar_one_or_none()
+
+            if not item or not item.is_available:
+                raise ValueError(f"Menu item {item_id} is not available.")
+
+            valid_item_count += 1
+            subtotal = item.price * qty
+            total_price += subtotal
+
+            # Create the specific OrderItem
+            order_line = OrderItem(
+                order_id=new_order.id,
+                menu_item_id=item.id,
+                quantity=qty,
+                unit_price=item.price,
+            )
+            db.add(order_line)
+            await db.flush()  # Get the order_line.id
+
+            # Handle exclusions
+            exclusions = selection.get("exclusions", [])
+            for exc in exclusions:
+                exclusion = OrderItemExclusion(
+                    order_item_id=order_line.id,
+                    ingredient_name=exc
+                )
+                db.add(exclusion)
+
+        if valid_item_count == 0:
+            raise ValueError("At least one available item must be selected.")
+
+        # 4. Update the final total price and save
+        new_order.total_price = total_price
+        await db.commit()
+        return new_order
+
+    @staticmethod
+    async def notify_customer_background(
+        restaurant_token: str,
+        restaurant_phone_id: str,
+        customer_wa_id: str,
+        customer_lang: str,
+        order_id: int,
+        status: str
+    ):
+        """
+        Background task to send WhatsApp status updates without slowing down the dashboard API.
+        We initialize a specific WhatsAppService instance per restaurant.
+        """
+        from app.services.whatsapp import WhatsAppService
+
+        ws = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
+        await ws.send_order_status_notification(
+            to_phone=customer_wa_id,
+            lang=customer_lang,
+            order_id=order_id,
+            status=status
+        )

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Setup - GEQO</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #result { margin-top: 20px; padding: 10px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GEQO Admin Setup</h1>
+        <p>Click the button below to create the initial admin user.</p>
+        <button onclick="setupAdmin()">Create Admin User</button>
+        <div id="result"></div>
+
+        <h2>Admin Credentials</h2>
+        <p><strong>Email:</strong> admin@geqo.com</p>
+        <p><strong>Password:</strong> admin123</p>
+
+        <h2>Next Steps</h2>
+        <ol>
+            <li>After creating the admin user, visit: <a href="/static/index.html" target="_blank">Admin Dashboard</a></li>
+            <li>Login with the credentials above</li>
+            <li>You can delete this setup page after successful login</li>
+        </ol>
+    </div>
+
+    <script>
+        async function setupAdmin() {
+            const result = document.getElementById('result');
+            result.innerHTML = 'Creating admin user...';
+
+            try {
+                const response = await fetch('/api/v1/admin/setup-admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    result.className = 'success';
+                    result.innerHTML = `<strong>Success!</strong><br>${data.message}<br><br>Now you can <a href="/static/index.html" target="_blank">login to the admin dashboard</a>`;
+                } else {
+                    result.className = 'error';
+                    result.innerHTML = `<strong>Error:</strong> ${data.detail || 'Unknown error'}`;
+                }
+            } catch (error) {
+                result.className = 'error';
+                result.innerHTML = `<strong>Error:</strong> Could not connect to server. Make sure the server is running.`;
+            }
+        }
+    </script>
+</body>
+</html>
