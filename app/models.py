@@ -47,7 +47,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole))
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # For restaurant owners
     restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id"))
@@ -70,8 +70,8 @@ class Restaurant(Base):
     cuisine_type: Mapped[Optional[str]] = mapped_column(String(50))
     operating_hours: Mapped[Optional[str]] = mapped_column(Text)  # JSON string
     contact_email: Mapped[Optional[str]] = mapped_column(String(100))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     
     categories: Mapped[List["Category"]] = relationship(back_populates="restaurant")
     drivers: Mapped[List["Driver"]] = relationship(back_populates="restaurant")
@@ -146,7 +146,7 @@ class Order(Base):
     latitude: Mapped[Optional[float]] = mapped_column(Float)
     longitude: Mapped[Optional[float]] = mapped_column(Float)
     driver_id: Mapped[Optional[int]] = mapped_column(ForeignKey("drivers.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     
     # Use strings "Restaurant" etc. to avoid NameErrors
     restaurant: Mapped["Restaurant"] = relationship(back_populates="orders")
@@ -191,8 +191,8 @@ class Cart(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_wa_id: Mapped[str] = mapped_column(String(20))
     restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     restaurant: Mapped["Restaurant"] = relationship()
     items: Mapped[List["CartItem"]] = relationship(back_populates="cart", cascade="all, delete-orphan")
@@ -229,7 +229,7 @@ class CartItemModifier(Base):
 class DailyAnalytics(Base):
     __tablename__ = "daily_analytics"
     id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
     
     total_orders: Mapped[int] = mapped_column(default=0)
