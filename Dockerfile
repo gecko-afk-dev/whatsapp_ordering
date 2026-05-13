@@ -5,25 +5,23 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Set the working directory
-WORKDIR /app
+# Set the working directory to /code (so it doesn't conflict with your "app" folder)
+WORKDIR /code
 
-# Install system dependencies (required for some Python packages like asyncpg)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first (leverages Docker cache)
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+# Copy all your code into the container
 COPY . .
 
-# Expose the port FastAPI runs on internally
-EXPOSE 8000
-
 # Start FastAPI using Uvicorn
-# --forwarded-allow-ips="*" allows FastAPI to see real client IPs through the Caddy proxy
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--forwarded-allow-ips", "*"]
+# 1. We changed "main:app" to "app.main:app" (assuming your main.py is inside the app folder)
+# 2. We allow Render to inject its own $PORT variable dynamically
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --forwarded-allow-ips '*'"]

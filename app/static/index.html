@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
+  <title>GEQO Portal</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<style>
+/* ── Reset & Tokens ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:     #111827;
+  --navy-md:  #1f2937;
+  --navy-lt:  #374151;
+  --emerald:  #059669;
+  --emerald-lt:#d1fae5;
+  --amber:    #d97706;
+  --amber-lt: #fef3c7;
+  --red:      #dc2626;
+  --red-lt:   #fee2e2;
+  --blue:     #2563eb;
+  --blue-lt:  #dbeafe;
+  --purple:   #7c3aed;
+  --purple-lt:#ede9fe;
+  --surface:  #f9fafb;
+  --card:     #ffffff;
+  --border:   #e5e7eb;
+  --border-md:#d1d5db;
+  --text-1:   #111827;
+  --text-2:   #374151;
+  --text-3:   #6b7280;
+  --text-4:   #9ca3af;
+  --sidebar-w:240px;
+  --radius:   10px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.10);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.14);
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-head: 'Syne', system-ui, sans-serif;
+  --transition: .18s cubic-bezier(.4,0,.2,1);
+}
+html, body { height: 100%; font-family: var(--font-body); background: var(--surface); color: var(--text-1); font-size: 14px; line-height: 1.6; }
+input, button, select, textarea { font-family: inherit; font-size: inherit; }
+button { cursor: pointer; border: none; background: none; }
+a { color: inherit; text-decoration: none; }
+
+/* ── Auth Shell ─────────────────────────────────────────────── */
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.auth-panel-left {
+  background: var(--navy);
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: flex-start;
+  padding: 64px 72px;
+  position: relative; overflow: hidden;
+}
+.auth-panel-left::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 80% 70% at 10% 90%, rgba(5,150,105,.18) 0%, transparent 70%),
+              radial-gradient(ellipse 60% 50% at 90% 10%, rgba(37,99,235,.12) 0%, transparent 70%);
+}
+.auth-logo {
+  font-family: var(--font-head);
+  font-size: 28px; font-weight: 800;
+  color: #fff; letter-spacing: -0.5px;
+  position: relative; z-index: 1;
+}
+.auth-logo span { color: var(--emerald); }
+.auth-tagline {
+  margin-top: 48px; position: relative; z-index: 1;
+}
+.auth-tagline h2 {
+  font-family: var(--font-head);
+  font-size: 36px; font-weight: 700;
+  color: #fff; line-height: 1.2;
+  margin-bottom: 16px;
+}
+.auth-tagline p { color: #9ca3af; font-size: 15px; max-width: 340px; }
+.auth-features { margin-top: 48px; display: flex; flex-direction: column; gap: 16px; position: relative; z-index: 1; }
+.auth-feature { display: flex; align-items: center; gap: 12px; color: #d1d5db; font-size: 13.5px; }
+.auth-feature-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--emerald); flex-shrink: 0; }
+
+.auth-panel-right {
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  padding: 48px 72px;
+  background: #fff;
+}
+.auth-card { width: 100%; max-width: 400px; }
+.auth-step { font-size: 12px; font-weight: 600; color: var(--emerald); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+.auth-card h1 { font-family: var(--font-head); font-size: 26px; font-weight: 700; color: var(--text-1); margin-bottom: 6px; }
+.auth-card .auth-sub { color: var(--text-3); font-size: 13.5px; margin-bottom: 32px; }
+
+/* ── Form Controls ──────────────────────────────────────────── */
+.form-group { margin-bottom: 20px; }
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+.form-input {
+  width: 100%; padding: 10px 14px;
+  border: 1.5px solid var(--border-md);
+  border-radius: 8px; background: var(--surface);
+  color: var(--text-1); outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.form-input:focus {
+  border-color: var(--emerald);
+  box-shadow: 0 0 0 3px rgba(5,150,105,.12);
+}
+.form-input.error { border-color: var(--red); }
+.form-hint { font-size: 11.5px; color: var(--text-4); margin-top: 5px; }
+.form-hint.danger { color: var(--red); }
+
+.pw-meter { margin-top: 6px; display: flex; gap: 4px; }
+.pw-bar { height: 3px; border-radius: 2px; flex: 1; background: var(--border); transition: background .3s; }
+.pw-bar.weak { background: var(--red); }
+.pw-bar.fair { background: var(--amber); }
+.pw-bar.strong { background: var(--emerald); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: all var(--transition); }
+.btn-primary { background: var(--navy); color: #fff; }
+.btn-primary:hover { background: var(--navy-md); box-shadow: 0 4px 12px rgba(17,24,39,.25); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-emerald { background: var(--emerald); color: #fff; }
+.btn-emerald:hover { background: #047857; box-shadow: 0 4px 12px rgba(5,150,105,.3); }
+.btn-ghost { color: var(--text-3); }
+.btn-ghost:hover { color: var(--text-1); background: var(--surface); }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { background: #b91c1c; }
+.btn-full { width: 100%; }
+
+.auth-link { text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-3); }
+.auth-link a { color: var(--emerald); font-weight: 600; }
+.auth-link a:hover { text-decoration: underline; }
+
+.alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+.alert-error { background: var(--red-lt); color: #991b1b; border: 1px solid #fca5a5; }
+.alert-success { background: var(--emerald-lt); color: #065f46; border: 1px solid #6ee7b7; }
+
+/* ── App Layout ─────────────────────────────────────────────── */
+.app-layout { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0;
+  background: var(--navy);
+  display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; bottom: 0;
+  z-index: 100; overflow-y: auto;
+  transition: width var(--transition);
+}
+.sidebar-logo {
+  padding: 24px 20px 20px;
+  font-family: var(--font-head);
+  font-size: 20px; font-weight: 800;
+  color: #fff; letter-spacing: -.4px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.sidebar-logo-mark {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--emerald);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 800; color: #fff;
+  flex-shrink: 0;
+}
+.sidebar-section { padding: 16px 12px 8px; }
+.sidebar-section-label { font-size: 10.5px; font-weight: 700; color: rgba(255,255,255,.3); letter-spacing: .1em; text-transform: uppercase; padding: 0 8px; margin-bottom: 4px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 8px;
+  color: rgba(255,255,255,.6); font-size: 13.5px; font-weight: 500;
+  cursor: pointer; width: 100%;
+  transition: all var(--transition);
+  margin-bottom: 2px;
+}
+.nav-item:hover { background: rgba(255,255,255,.07); color: #fff; }
+.nav-item.active { background: rgba(5,150,105,.2); color: #fff; }
+.nav-item.active .nav-icon { color: var(--emerald); }
+.nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
+.nav-badge { margin-left: auto; background: var(--emerald); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+
+.sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid rgba(255,255,255,.07);
+  padding: 16px 12px;
+}
+.sidebar-user { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; }
+.sidebar-avatar {
+  width: 34px; height: 34px; border-radius: 8px;
+  background: var(--emerald); display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px; color: #fff; flex-shrink: 0;
+}
+.sidebar-user-info { flex: 1; min-width: 0; }
+.sidebar-user-name { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-user-role { font-size: 11px; color: rgba(255,255,255,.4); }
+.sidebar-logout { color: rgba(255,255,255,.35); transition: color var(--transition); }
+.sidebar-logout:hover { color: #f87171; }
+
+/* ── Main Content ───────────────────────────────────────────── */
+.main-content { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; }
+
+.topbar {
+  background: #fff; border-bottom: 1px solid var(--border);
+  padding: 0 32px; height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 50;
+}
+.topbar-title { font-family: var(--font-head); font-size: 18px; font-weight: 700; color: var(--text-1); }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+.topbar-badge { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; }
+.badge-active { background: var(--emerald-lt); color: #065f46; }
+.badge-admin  { background: var(--blue-lt); color: #1e40af; }
+
+.page-body { padding: 28px 32px; }
+
+/* ── Stat Cards ─────────────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+.stat-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+.stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.stat-card-top { display: flex; align-items: center; justify-content: space-between; }
+.stat-label { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
+.stat-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.icon-emerald { background: var(--emerald-lt); }
+.icon-amber   { background: var(--amber-lt); }
+.icon-blue    { background: var(--blue-lt); }
+.icon-purple  { background: var(--purple-lt); }
+.icon-red     { background: var(--red-lt); }
+.stat-value { font-family: var(--font-head); font-size: 28px; font-weight: 700; color: var(--text-1); line-height: 1; }
+.stat-meta { font-size: 12px; color: var(--text-4); }
+.stat-meta .up { color: var(--emerald); font-weight: 600; }
+.stat-meta .dn { color: var(--red); font-weight: 600; }
+
+/* ── Panel / Card ───────────────────────────────────────────── */
+.panel {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  margin-bottom: 20px;
+}
+.panel-header {
+  padding: 18px 22px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title { font-weight: 700; font-size: 15px; color: var(--text-1); }
+.panel-sub { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.panel-body { padding: 20px 22px; }
+
+/* ── Table ──────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th { padding: 10px 16px; text-align: left; font-size: 11.5px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .07em; border-bottom: 2px solid var(--border); }
+.data-table td { padding: 14px 16px; font-size: 13.5px; color: var(--text-2); border-bottom: 1px solid var(--border); vertical-align: middle; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--surface); }
+.data-table td.name { font-weight: 600; color: var(--text-1); }
+
+/* ── Status Pills ───────────────────────────────────────────── */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.pill-green  { background: var(--emerald-lt); color: #065f46; } .pill-green::before  { background: var(--emerald); }
+.pill-amber  { background: var(--amber-lt);   color: #92400e; } .pill-amber::before  { background: var(--amber); }
+.pill-red    { background: var(--red-lt);     color: #991b1b; } .pill-red::before    { background: var(--red); }
+.pill-blue   { background: var(--blue-lt);    color: #1e40af; } .pill-blue::before   { background: var(--blue); }
+.pill-purple { background: var(--purple-lt);  color: #5b21b6; } .pill-purple::before { background: var(--purple); }
+.pill-gray   { background: #f3f4f6;           color: #4b5563; } .pill-gray::before   { background: #9ca3af; }
+
+/* ── Order Cards ────────────────────────────────────────────── */
+.orders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.order-card {
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition);
+  position: relative; overflow: hidden;
+}
+.order-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.order-card.received::before  { background: var(--amber); }
+.order-card.accepted::before  { background: var(--blue); }
+.order-card.preparing::before { background: var(--purple); }
+.order-card.ready::before     { background: var(--emerald); }
+.order-card:hover { box-shadow: var(--shadow-md); }
+.order-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+.order-id { font-weight: 700; font-size: 14px; color: var(--text-1); }
+.order-time { font-size: 11.5px; color: var(--text-4); }
+.order-items { font-size: 13px; color: var(--text-2); margin-bottom: 14px; }
+.order-item-line { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.order-item-line:last-child { border-bottom: none; }
+.order-total { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 2px solid var(--border); margin-top: 6px; }
+.order-total-label { font-size: 12px; font-weight: 700; color: var(--text-3); text-transform: uppercase; }
+.order-total-amount { font-family: var(--font-head); font-size: 18px; font-weight: 700; color: var(--text-1); }
+.order-actions { display: flex; gap: 8px; margin-top: 14px; }
+.order-actions .btn { flex: 1; }
+
+/* ── Modal ──────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fade-in .15s ease;
+}
+.modal {
+  background: #fff; border-radius: 14px;
+  width: 90%; max-width: 560px; max-height: 90vh;
+  overflow-y: auto; box-shadow: var(--shadow-lg);
+  animation: slide-up .2s cubic-bezier(.34,1.36,.64,1);
+}
+.modal-header { padding: 22px 26px 0; display: flex; align-items: flex-start; justify-content: space-between; }
+.modal-title { font-family: var(--font-head); font-size: 18px; font-weight: 700; }
+.modal-close { color: var(--text-4); font-size: 20px; line-height: 1; transition: color var(--transition); }
+.modal-close:hover { color: var(--text-1); }
+.modal-body { padding: 20px 26px 26px; }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* ── Menu Toggle ────────────────────────────────────────────── */
+.toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-track {
+  position: absolute; inset: 0; border-radius: 22px;
+  background: var(--border-md); cursor: pointer;
+  transition: background var(--transition);
+}
+.toggle-track::after {
+  content: ''; position: absolute;
+  left: 3px; top: 3px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff;
+  transition: transform var(--transition);
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+input:checked + .toggle-track { background: var(--emerald); }
+input:checked + .toggle-track::after { transform: translateX(18px); }
+
+/* ── Divider ────────────────────────────────────────────────── */
+.divider { height: 1px; background: var(--border); margin: 20px 0; }
+.or-divider { display: flex; align-items: center; gap: 12px; color: var(--text-4); font-size: 12px; margin: 16px 0; }
+.or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── Empty State ────────────────────────────────────────────── */
+.empty-state { padding: 60px 24px; text-align: center; color: var(--text-3); }
+.empty-state-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state p { font-size: 14px; }
+
+/* ── Loading spinner ────────────────────────────────────────── */
+.spinner { width: 20px; height: 20px; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Password strength ──────────────────────────────────────── */
+.setup-steps { display: flex; gap: 0; margin-bottom: 28px; }
+.setup-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+.setup-step + .setup-step::before { content: ''; position: absolute; left: 0; top: 14px; width: 50%; height: 2px; background: var(--border); transform: translateX(-50%); z-index: 0; }
+.setup-step.done + .setup-step::before { background: var(--emerald); }
+.step-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; z-index: 1; background: var(--border); color: var(--text-3); transition: all .3s; }
+.setup-step.active .step-dot { background: var(--navy); color: #fff; }
+.setup-step.done .step-dot   { background: var(--emerald); color: #fff; }
+.step-label { font-size: 11px; font-weight: 600; color: var(--text-4); text-align: center; }
+.setup-step.active .step-label, .setup-step.done .step-label { color: var(--text-2); }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .auth-shell { grid-template-columns: 1fr; }
+  .auth-panel-left { display: none; }
+  .auth-panel-right { padding: 40px 24px; }
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: none; }
+  .main-content { margin-left: 0; }
+  .modal-grid { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Notification Sound -->
+  <audio id="notificationSound" src="/static/notification.mp3" preload="auto"></audio>
+
+  <!-- ═══════════════════════════════════════════
+       AUTH SCREENS
+  ═══════════════════════════════════════════ -->
+  <div v-if="!appReady || !user" class="auth-shell">
+    <!-- Left panel -->
+    <div class="auth-panel-left">
+      <div class="auth-logo"><span>GEQO</span> Portal</div>
+      <div class="auth-tagline">
+        <h2>Manage your restaurant,<br>one message at a time.</h2>
+        <p>The WhatsApp-first platform for modern food businesses.</p>
+      </div>
+      <div class="auth-features">
+        <div class="auth-feature"><span class="auth-feature-dot"></span>Real-time WhatsApp order management</div>
+        <div class="auth-feature"><span class="auth-feature-dot"></span>Multilingual menus (FR / AR / EN)</div>
+        <div class="auth-feature"><span class="auth-feature-dot"></span>Live order tracking &amp; analytics</div>
+        <div class="auth-feature"><span class="auth-feature-dot"></span>Multi-tenant, zero-hassle setup</div>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="auth-panel-right">
+
+      <!-- ── SCREEN 1: FIRST-TIME SETUP ── -->
+      <div class="auth-card" v-if="authScreen === 'setup'">
+        <div class="setup-steps">
+          <div class="setup-step" :class="{ active: setupStep === 1, done: setupStep > 1 }">
+            <div class="step-dot">{{ setupStep > 1 ? '✓' : '1' }}</div>
+            <div class="step-label">Verify</div>
+          </div>
+          <div class="setup-step" :class="{ active: setupStep === 2, done: setupStep > 2 }">
+            <div class="step-dot">{{ setupStep > 2 ? '✓' : '2' }}</div>
+            <div class="step-label">Password</div>
+          </div>
+          <div class="setup-step" :class="{ active: setupStep === 3 }">
+            <div class="step-dot">3</div>
+            <div class="step-label">Done</div>
+          </div>
+        </div>
+
+        <!-- Step 1: enter username given by GEQO -->
+        <div v-if="setupStep === 1">
+          <div class="auth-step">First-time setup</div>
+          <h1>Welcome to GEQO</h1>
+          <p class="auth-sub">Enter the username we sent you to get started.</p>
+          <div v-if="authError" class="alert alert-error">{{ authError }}</div>
+          <div class="form-group">
+            <label class="form-label">Your username (email)</label>
+            <input class="form-input" :class="{ error: authError }" type="email" v-model="setupForm.email" placeholder="restaurant@example.com" @keyup.enter="verifyUsername">
+          </div>
+          <button class="btn btn-primary btn-full" :disabled="loading" @click="verifyUsername">
+            <span v-if="loading" class="spinner"></span>
+            <span v-else>Continue →</span>
+          </button>
+          <div class="or-divider">or</div>
+          <div class="auth-link">Already have a password? <a href="#" @click.prevent="authScreen = 'login'">Sign in</a></div>
+        </div>
+
+        <!-- Step 2: create password -->
+        <div v-if="setupStep === 2">
+          <div class="auth-step">First-time setup · {{ setupForm.email }}</div>
+          <h1>Create your password</h1>
+          <p class="auth-sub">Choose a strong password to protect your account.</p>
+          <div v-if="authError" class="alert alert-error">{{ authError }}</div>
+          <div class="form-group">
+            <label class="form-label">New password</label>
+            <input class="form-input" type="password" v-model="setupForm.password" placeholder="Min. 8 characters" @input="checkPwStrength">
+            <div class="pw-meter">
+              <div class="pw-bar" :class="pwStrength >= 1 ? pwClass : ''"></div>
+              <div class="pw-bar" :class="pwStrength >= 2 ? pwClass : ''"></div>
+              <div class="pw-bar" :class="pwStrength >= 3 ? pwClass : ''"></div>
+              <div class="pw-bar" :class="pwStrength >= 4 ? pwClass : ''"></div>
+            </div>
+            <div class="form-hint">{{ pwLabel }}</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm password</label>
+            <input class="form-input" :class="{ error: setupForm.confirm && setupForm.password !== setupForm.confirm }" type="password" v-model="setupForm.confirm" placeholder="Repeat your password" @keyup.enter="submitSetup">
+            <div v-if="setupForm.confirm && setupForm.password !== setupForm.confirm" class="form-hint danger">Passwords do not match</div>
+          </div>
+          <button class="btn btn-emerald btn-full" :disabled="loading || !canSubmitSetup" @click="submitSetup">
+            <span v-if="loading" class="spinner"></span>
+            <span v-else>Set Password &amp; Sign In</span>
+          </button>
+          <div class="auth-link"><a href="#" @click.prevent="setupStep = 1">← Back</a></div>
+        </div>
+
+        <!-- Step 3: success -->
+        <div v-if="setupStep === 3" style="text-align:center;padding: 20px 0;">
+          <div style="font-size:52px;margin-bottom:16px;">✅</div>
+          <h1 style="margin-bottom:8px;">All set!</h1>
+          <p class="auth-sub" style="margin-bottom:24px;">Your account is ready. Signing you in…</p>
+          <div class="spinner" style="margin:0 auto;"></div>
+        </div>
+      </div>
+
+      <!-- ── SCREEN 2: NORMAL LOGIN ── -->
+      <div class="auth-card" v-else-if="authScreen === 'login'">
+        <div class="auth-step">Portal access</div>
+        <h1>Sign in</h1>
+        <p class="auth-sub">Enter your email and password to continue.</p>
+        <div v-if="authError" class="alert alert-error">{{ authError }}</div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" type="email" v-model="loginForm.email" placeholder="you@restaurant.com" @keyup.enter="login">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input class="form-input" type="password" v-model="loginForm.password" placeholder="Your password" @keyup.enter="login">
+        </div>
+        <button class="btn btn-primary btn-full" :disabled="loading" @click="login">
+          <span v-if="loading" class="spinner"></span>
+          <span v-else>Sign In</span>
+        </button>
+        <div class="or-divider">or</div>
+        <div class="auth-link">First time here? <a href="#" @click.prevent="authScreen = 'setup'; setupStep = 1">Set up your account</a></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
+       MAIN APP
+  ═══════════════════════════════════════════ -->
+  <div v-else class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-mark">G</div>
+        GEQO
+      </div>
+
+      <!-- Admin nav -->
+      <div v-if="user.role === 'admin'" class="sidebar-section">
+        <div class="sidebar-section-label">Admin</div>
+        <button class="nav-item" :class="{ active: currentView === 'overview' }" @click="currentView = 'overview'">
+          <span class="nav-icon">◉</span> Overview
+        </button>
+        <button class="nav-item" :class="{ active: currentView === 'restaurants' }" @click="currentView = 'restaurants'">
+          <span class="nav-icon">🏪</span> Restaurants
+        </button>
+        <button class="nav-item" :class="{ active: currentView === 'analytics' }" @click="currentView = 'analytics'">
+          <span class="nav-icon">📊</span> Analytics
+        </button>
+      </div>
+
+      <!-- Restaurant owner nav -->
+      <div v-if="user.role === 'restaurant_owner'" class="sidebar-section">
+        <div class="sidebar-section-label">My Restaurant</div>
+        <button class="nav-item" :class="{ active: currentView === 'orders' }" @click="currentView = 'orders'">
+          <span class="nav-icon">🧾</span> Live Orders
+          <span v-if="pendingCount > 0" class="nav-badge">{{ pendingCount }}</span>
+        </button>
+        <button class="nav-item" :class="{ active: currentView === 'menu' }" @click="currentView = 'menu'">
+          <span class="nav-icon">🍽️</span> Menu
+        </button>
+        <button class="nav-item" :class="{ active: currentView === 'restaurant' }" @click="currentView = 'restaurant'">
+          <span class="nav-icon">📈</span> My Dashboard
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="sidebar-avatar">{{ userInitials }}</div>
+          <div class="sidebar-user-info">
+            <div class="sidebar-user-name">{{ user.email }}</div>
+            <div class="sidebar-user-role">{{ user.role === 'admin' ? 'Administrator' : 'Restaurant Owner' }}</div>
+          </div>
+          <button class="sidebar-logout" @click="logout" title="Sign out">⎋</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <div class="main-content">
+
+      <!-- Topbar -->
+      <div class="topbar">
+        <div class="topbar-title">{{ viewTitle }}</div>
+        <div class="topbar-actions">
+          <span class="topbar-badge" :class="user.role === 'admin' ? 'badge-admin' : 'badge-active'">
+            {{ user.role === 'admin' ? 'Admin' : 'Restaurant Owner' }}
+          </span>
+          <button v-if="user.role === 'admin' && currentView === 'restaurants'" class="btn btn-emerald btn-sm" @click="showCreateRestaurant = true">+ Add Restaurant</button>
+        </div>
+      </div>
+
+      <!-- Page body -->
+      <div class="page-body">
+
+        <!-- ──────────────────────────────────
+             ADMIN: OVERVIEW
+        ────────────────────────────────── -->
+        <div v-if="currentView === 'overview'">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-card-top">
+                <div class="stat-label">Total Restaurants</div>
+                <div class="stat-icon icon-blue">🏪</div>
+              </div>
+              <div class="stat-value">{{ analytics.total_restaurants || 0 }}</div>
+              <div class="stat-meta">Registered on platform</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top">
+                <div class="stat-label">Orders Today</div>
+                <div class="stat-icon icon-emerald">🧾</div>
+              </div>
+              <div class="stat-value">{{ analytics.total_orders_today || 0 }}</div>
+              <div class="stat-meta">Across all restaurants</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top">
+                <div class="stat-label">Revenue Today</div>
+                <div class="stat-icon icon-amber">💰</div>
+              </div>
+              <div class="stat-value">{{ formatCurrency(analytics.total_revenue_today) }}</div>
+              <div class="stat-meta">Gross revenue</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top">
+                <div class="stat-label">Avg Order Value</div>
+                <div class="stat-icon icon-purple">📐</div>
+              </div>
+              <div class="stat-value">{{ formatCurrency(analytics.avg_order_value) }}</div>
+              <div class="stat-meta">Per transaction</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Restaurant Performance</div>
+                <div class="panel-sub">Today's activity across all registered restaurants</div>
+              </div>
+            </div>
+            <div v-if="restaurantAnalytics.length === 0" class="empty-state">
+              <div class="empty-state-icon">🏪</div>
+              <p>No restaurant data yet. Add your first restaurant to get started.</p>
+            </div>
+            <table v-else class="data-table">
+              <thead>
+                <tr>
+                  <th>Restaurant</th>
+                  <th>Orders Today</th>
+                  <th>Revenue Today</th>
+                  <th>Commission</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in restaurantAnalytics" :key="r.restaurant_id">
+                  <td class="name">{{ r.restaurant_name }}</td>
+                  <td>{{ r.orders_today }}</td>
+                  <td>{{ formatCurrency(r.revenue_today) }}</td>
+                  <td>{{ formatCurrency(r.revenue_today * (r.commission_rate || 0.2)) }}</td>
+                  <td>
+                    <span class="pill" :class="r.status === 'active' ? 'pill-green' : 'pill-red'">{{ r.status }}</span>
+                  </td>
+                  <td>
+                    <button v-if="r.status === 'active'" class="btn btn-sm btn-danger" @click="suspendRestaurant(r.restaurant_id)">Suspend</button>
+                    <button v-else class="btn btn-sm btn-emerald" @click="activateRestaurant(r.restaurant_id)">Activate</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ──────────────────────────────────
+             ADMIN: RESTAURANTS MANAGEMENT
+        ────────────────────────────────── -->
+        <div v-if="currentView === 'restaurants'">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">All Restaurants</div>
+                <div class="panel-sub">Manage accounts, settings and billing</div>
+              </div>
+            </div>
+            <div v-if="restaurantAnalytics.length === 0" class="empty-state">
+              <div class="empty-state-icon">🏪</div>
+              <p>No restaurants registered yet.</p>
+            </div>
+            <table v-else class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>WhatsApp Phone</th>
+                  <th>Commission</th>
+                  <th>Status</th>
+                  <th>Payment</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in restaurantAnalytics" :key="r.restaurant_id">
+                  <td class="name">{{ r.restaurant_name }}</td>
+                  <td>{{ r.wa_phone_number || '—' }}</td>
+                  <td>{{ ((r.commission_rate || 0.2) * 100).toFixed(0) }}%</td>
+                  <td><span class="pill" :class="r.status === 'active' ? 'pill-green' : 'pill-red'">{{ r.status }}</span></td>
+                  <td><span class="pill pill-amber">Pending</span></td>
+                  <td style="display:flex;gap:6px;align-items:center;">
+                    <button v-if="r.status === 'active'" class="btn btn-sm btn-danger" @click="suspendRestaurant(r.restaurant_id)">Suspend</button>
+                    <button v-else class="btn btn-sm btn-emerald" @click="activateRestaurant(r.restaurant_id)">Activate</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ──────────────────────────────────
+             ADMIN: ANALYTICS
+        ────────────────────────────────── -->
+        <div v-if="currentView === 'analytics'">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">This Month</div><div class="stat-icon icon-emerald">📅</div></div>
+              <div class="stat-value">{{ analytics.total_orders_month || 0 }}</div>
+              <div class="stat-meta">Total orders</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Monthly Revenue</div><div class="stat-icon icon-amber">💰</div></div>
+              <div class="stat-value">{{ formatCurrency(analytics.total_revenue_month) }}</div>
+              <div class="stat-meta">Gross revenue</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Per-restaurant breakdown</div></div>
+            <div class="panel-body">
+              <p style="color:var(--text-3);font-size:13px;">Detailed per-restaurant monthly analytics coming soon. Currently showing live data computed from orders.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ──────────────────────────────────
+             RESTAURANT OWNER: LIVE ORDERS
+        ────────────────────────────────── -->
+        <div v-if="currentView === 'orders'">
+          <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);">
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Pending</div><div class="stat-icon icon-amber">⏳</div></div>
+              <div class="stat-value">{{ (restaurantDashboard.pending_orders || []).filter(o => o.status === 'received').length }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Preparing</div><div class="stat-icon icon-purple">🍳</div></div>
+              <div class="stat-value">{{ (restaurantDashboard.pending_orders || []).filter(o => ['accepted','preparing'].includes(o.status)).length }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Ready</div><div class="stat-icon icon-emerald">✅</div></div>
+              <div class="stat-value">{{ (restaurantDashboard.pending_orders || []).filter(o => o.status === 'ready').length }}</div>
+            </div>
+          </div>
+
+          <div v-if="!restaurantDashboard.pending_orders || restaurantDashboard.pending_orders.length === 0" class="empty-state">
+            <div class="empty-state-icon">🎉</div>
+            <p>No active orders right now. New orders will appear here in real-time.</p>
+          </div>
+
+          <div v-else class="orders-grid">
+            <div v-for="order in restaurantDashboard.pending_orders" :key="order.id"
+                 class="order-card" :class="order.status">
+              <div class="order-card-header">
+                <div>
+                  <div class="order-id">Order #{{ order.id }}</div>
+                  <div class="order-time">{{ formatTime(order.created_at) }}</div>
+                </div>
+                <span class="pill" :class="statusPill(order.status)">{{ order.status }}</span>
+              </div>
+              <div class="order-items">
+                <div class="order-item-line" v-for="item in (order.items || [])" :key="item.id">
+                  <span>{{ item.quantity }}× {{ item.item_name }}</span>
+                  <span>{{ formatCurrency(item.unit_price * item.quantity) }}</span>
+                </div>
+              </div>
+              <div class="order-total">
+                <span class="order-total-label">Total</span>
+                <span class="order-total-amount">{{ formatCurrency(order.total_price) }}</span>
+              </div>
+              <div class="order-actions">
+                <button v-if="order.status === 'received'" class="btn btn-emerald btn-sm" @click="updateOrderStatus(order.id, 'accepted')">Accept</button>
+                <button v-if="order.status === 'accepted'" class="btn btn-sm" style="background:var(--purple);color:#fff;" @click="updateOrderStatus(order.id, 'preparing')">Preparing</button>
+                <button v-if="order.status === 'preparing'" class="btn btn-sm" style="background:var(--blue);color:#fff;" @click="updateOrderStatus(order.id, 'ready')">Mark Ready</button>
+                <button v-if="order.status === 'ready'" class="btn btn-sm" style="background:var(--navy);color:#fff;" @click="updateOrderStatus(order.id, 'dispatched')">Dispatched</button>
+                <button v-if="['received','accepted'].includes(order.status)" class="btn btn-sm btn-danger" style="flex:0.4;" @click="updateOrderStatus(order.id, 'cancelled')">✕</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ──────────────────────────────────
+             RESTAURANT OWNER: MENU
+        ────────────────────────────────── -->
+        <div v-if="currentView === 'menu'">
+          <div class="panel">
+            <div class="panel-header">
+              <div><div class="panel-title">Menu Items</div><div class="panel-sub">Toggle availability in real-time</div></div>
+            </div>
+            <div v-if="!menuItems || menuItems.length === 0" class="empty-state">
+              <div class="empty-state-icon">🍽️</div>
+              <p>No menu items yet. Items are managed by GEQO admin.</p>
+            </div>
+            <table v-else class="data-table">
+              <thead>
+                <tr><th>Item</th><th>Category</th><th>Price</th><th>Available</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in menuItems" :key="item.id">
+                  <td class="name">{{ item.name_en }}</td>
+                  <td>{{ item.category_name || '—' }}</td>
+                  <td>{{ formatCurrency(item.price) }}</td>
+                  <td>
+                    <label class="toggle-switch">
+                      <input type="checkbox" :checked="item.is_available" @change="toggleItemAvailability(item)">
+                      <span class="toggle-track"></span>
+                    </label>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ──────────────────────────────────
+             RESTAURANT OWNER: MY DASHBOARD
+        ────────────────────────────────── -->
+        <div v-if="currentView === 'restaurant'">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Orders Today</div><div class="stat-icon icon-emerald">🧾</div></div>
+              <div class="stat-value">{{ restaurantDashboard.today_stats?.orders || 0 }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Revenue Today</div><div class="stat-icon icon-amber">💰</div></div>
+              <div class="stat-value">{{ formatCurrency(restaurantDashboard.today_stats?.revenue) }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-top"><div class="stat-label">Active Orders</div><div class="stat-icon icon-blue">⚡</div></div>
+              <div class="stat-value">{{ restaurantDashboard.pending_orders?.length || 0 }}</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Restaurant Info</div></div>
+            <div class="panel-body" v-if="restaurantDashboard.restaurant">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div><div class="form-label" style="margin-bottom:4px;">Name</div><div>{{ restaurantDashboard.restaurant.name || '—' }}</div></div>
+                <div><div class="form-label" style="margin-bottom:4px;">WhatsApp</div><div>{{ restaurantDashboard.restaurant.wa_phone_number || '—' }}</div></div>
+                <div><div class="form-label" style="margin-bottom:4px;">Email</div><div>{{ restaurantDashboard.restaurant.contact_email || '—' }}</div></div>
+                <div><div class="form-label" style="margin-bottom:4px;">Cuisine</div><div>{{ restaurantDashboard.restaurant.cuisine_type || '—' }}</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /page-body -->
+    </div><!-- /main-content -->
+  </div><!-- /app-layout -->
+
+  <!-- ═══════════════════════════════════════════
+       CREATE RESTAURANT MODAL
+  ═══════════════════════════════════════════ -->
+  <div class="modal-overlay" v-if="showCreateRestaurant" @click.self="showCreateRestaurant = false">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Add New Restaurant</div>
+        <button class="modal-close" @click="showCreateRestaurant = false">✕</button>
+      </div>
+      <div class="modal-body">
+        <div v-if="authError" class="alert alert-error">{{ authError }}</div>
+        <!-- Restaurant info (provided by the restaurant) -->
+        <div style="font-size:11px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Restaurant info</div>
+        <div class="modal-grid">
+          <div class="form-group">
+            <label class="form-label">Restaurant Name *</label>
+            <input class="form-input" type="text" v-model="restaurantForm.name" placeholder="e.g. Le Petit Bistro">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cuisine Type</label>
+            <input class="form-input" type="text" v-model="restaurantForm.cuisine_type" placeholder="Moroccan, Italian…">
+          </div>
+          <div class="form-group">
+            <label class="form-label">WhatsApp Business Number *</label>
+            <input class="form-input" type="text" v-model="restaurantForm.wa_phone_number" placeholder="+212XXXXXXXXX">
+            <div class="form-hint">The number they want to receive orders on</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Owner Email *</label>
+            <input class="form-input" type="email" v-model="restaurantForm.contact_email" placeholder="owner@restaurant.com">
+            <div class="form-hint">This becomes their portal login username</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Technical fields (filled in by GEQO after Meta setup) -->
+        <div style="font-size:11px;font-weight:700;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">GEQO internal · Meta configuration</div>
+        <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;">Fill these in after you've set up their WhatsApp Business API account on Meta.</div>
+        <div class="modal-grid">
+          <div class="form-group">
+            <label class="form-label">API Token</label>
+            <input class="form-input" type="text" v-model="restaurantForm.api_token" placeholder="Leave blank — add later">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone Number ID</label>
+            <input class="form-input" type="text" v-model="restaurantForm.phone_number_id" placeholder="Leave blank — add later">
+          </div>
+          <div class="form-group" style="grid-column:span 2;">
+            <label class="form-label">Owner WhatsApp ID</label>
+            <input class="form-input" type="text" v-model="restaurantForm.owner_wa_id" placeholder="Leave blank — add later">
+            <div class="form-hint">Used to send order notifications to the owner directly on WhatsApp</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+          <button class="btn btn-ghost" @click="showCreateRestaurant = false">Cancel</button>
+          <button class="btn btn-emerald" :disabled="loading" @click="createRestaurant">
+            <span v-if="loading" class="spinner"></span>
+            <span v-else>Create Restaurant</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<script>
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      appReady: false,
+      user: null,
+      loading: false,
+      authError: null,
+      authScreen: 'login',    // 'login' | 'setup'
+      setupStep: 1,
+
+      loginForm: { email: '', password: '' },
+      setupForm: { email: '', password: '', confirm: '' },
+
+      pwStrength: 0,
+      pwClass: '',
+      pwLabel: '',
+
+      currentView: 'overview',
+
+      analytics: {},
+      restaurantAnalytics: [],
+      restaurantDashboard: { restaurant: {}, today_stats: {}, pending_orders: [] },
+      menuItems: [],
+
+      showCreateRestaurant: false,
+      restaurantForm: {
+        name: '', wa_phone_number: '', api_token: '',
+        phone_number_id: '', owner_wa_id: '', contact_email: '',
+        cuisine_type: '', commission_rate: 0.20
+      },
+
+      ws: null,
+    };
+  },
+
+  computed: {
+    userInitials() {
+      return this.user?.email?.[0]?.toUpperCase() || 'U';
+    },
+    viewTitle() {
+      const map = {
+        overview: 'Overview', restaurants: 'Restaurant Management',
+        analytics: 'Analytics', orders: 'Live Orders',
+        menu: 'Menu', restaurant: 'My Dashboard'
+      };
+      return map[this.currentView] || '';
+    },
+    pendingCount() {
+      return (this.restaurantDashboard.pending_orders || [])
+        .filter(o => o.status === 'received').length;
+    },
+    canSubmitSetup() {
+      return this.setupForm.password.length >= 8 &&
+             this.setupForm.password === this.setupForm.confirm;
+    },
+  },
+
+  async mounted() {
+    const token = localStorage.getItem('geqo_token');
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      try {
+        await this.loadDashboardData();
+        const stored = localStorage.getItem('geqo_user');
+        if (stored) this.user = JSON.parse(stored);
+      } catch (e) {
+        console.warn("Failed to restore session", e);
+        this.logout();
+      }
+    }
+    this.appReady = true;
+  },
+
+  methods: {
+    // ── Auth ───────────────────────────────────
+    async login() {
+      this.loading = true; this.authError = null;
+      try {
+        const { data } = await axios.post('/api/v1/admin/login', this.loginForm);
+        this.handleLoginSuccess(data);
+      } catch (e) {
+        this.authError = e.response?.data?.detail || 'Invalid email or password.';
+      } finally { this.loading = false; }
+    },
+
+    async verifyUsername() {
+      if (!this.setupForm.email) { this.authError = 'Please enter your email.'; return; }
+      this.loading = true; this.authError = null;
+      await new Promise(r => setTimeout(r, 400));
+      this.setupStep = 2;
+      this.loading = false;
+    },
+
+    async submitSetup() {
+      if (!this.canSubmitSetup) return;
+      this.loading = true; this.authError = null;
+      try {
+        const { data } = await axios.post('/api/v1/admin/change-password', {
+          email: this.setupForm.email,
+          new_password: this.setupForm.password,
+        });
+        this.setupStep = 3;
+        setTimeout(async () => {
+          try {
+            const { data: loginData } = await axios.post('/api/v1/admin/login', {
+              email: this.setupForm.email,
+              password: this.setupForm.password,
+            });
+            this.handleLoginSuccess(loginData);
+          } catch {
+            this.authScreen = 'login';
+            this.loginForm.email = this.setupForm.email;
+            this.setupStep = 1;
+          }
+        }, 1800);
+      } catch (e) {
+        this.authError = e.response?.data?.detail || 'Could not set password. Please contact support.';
+        this.setupStep = 2;
+      } finally { this.loading = false; }
+    },
+
+    handleLoginSuccess(data) {
+      const { access_token, user } = data;
+      localStorage.setItem('geqo_token', access_token);
+      localStorage.setItem('geqo_user', JSON.stringify(user));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      this.user = user;
+      this.currentView = user.role === 'admin' ? 'overview' : 'orders';
+      this.authError = null;
+      this.loadDashboardData();
+      if (user.role === 'restaurant_owner') this.connectWebSocket();
+    },
+
+    logout() {
+      localStorage.removeItem('geqo_token');
+      localStorage.removeItem('geqo_user');
+      delete axios.defaults.headers.common['Authorization'];
+      if (this.ws) { this.ws.close(); this.ws = null; }
+      this.user = null;
+      this.authScreen = 'login';
+      this.loginForm = { email: '', password: '' };
+    },
+
+    // ── Password meter ───────────────────────────
+    checkPwStrength() {
+      const p = this.setupForm.password;
+      let s = 0;
+      if (p.length >= 8) s++;
+      if (/[A-Z]/.test(p)) s++;
+      if (/[0-9]/.test(p)) s++;
+      if (/[^A-Za-z0-9]/.test(p)) s++;
+      this.pwStrength = s;
+      if (s <= 1) { this.pwClass = 'weak'; this.pwLabel = 'Weak'; }
+      else if (s === 2) { this.pwClass = 'fair'; this.pwLabel = 'Fair — add numbers or symbols'; }
+      else { this.pwClass = 'strong'; this.pwLabel = 'Strong password'; }
+    },
+
+    // ── Data loading ─────────────────────────────
+    async loadDashboardData() {
+      if (this.user?.role === 'admin') {
+        await Promise.all([this.loadAnalytics(), this.loadRestaurantAnalytics()]);
+      } else if (this.user?.role === 'restaurant_owner') {
+        await Promise.all([this.loadRestaurantDashboard(), this.loadMenu()]);
+      }
+    },
+    async loadAnalytics() {
+      try { const { data } = await axios.get('/api/v1/admin/analytics/summary'); this.analytics = data; } 
+      catch(e) { console.error("Failed to load analytics", e); }
+    },
+    async loadRestaurantAnalytics() {
+      try { const { data } = await axios.get('/api/v1/admin/analytics/restaurants'); this.restaurantAnalytics = data; } 
+      catch(e) { console.error("Failed to load restaurant analytics", e); }
+    },
+    async loadRestaurantDashboard() {
+      try { const { data } = await axios.get('/api/v1/dashboard/dashboard'); this.restaurantDashboard = data; } 
+      catch(e) { console.error("Failed to load restaurant dashboard", e); }
+    },
+    async loadMenu() {
+      try { const { data } = await axios.get('/api/v1/dashboard/menu'); this.menuItems = data; } 
+      catch(e) { console.error("Failed to load menu", e); }
+    },
+
+    // ── Restaurant actions ───────────────────────
+    async createRestaurant() {
+      this.loading = true; this.authError = null;
+      try {
+        await axios.post('/api/v1/admin/restaurants', this.restaurantForm);
+        this.showCreateRestaurant = false;
+        this.restaurantForm = { name:'', wa_phone_number:'', api_token:'', phone_number_id:'', owner_wa_id:'', contact_email:'', cuisine_type:'', commission_rate: 0.20 };
+        await this.loadAnalytics(); await this.loadRestaurantAnalytics();
+      } catch (e) {
+        this.authError = e.response?.data?.detail || 'Failed to create restaurant';
+      } finally { this.loading = false; }
+    },
+    async suspendRestaurant(id) {
+      try { await axios.post(`/api/v1/admin/restaurants/${id}/suspend`); await this.loadRestaurantAnalytics(); } catch {}
+    },
+    async activateRestaurant(id) {
+      try { await axios.post(`/api/v1/admin/restaurants/${id}/activate`); await this.loadRestaurantAnalytics(); } catch {}
+    },
+
+    // ── Order actions ────────────────────────────
+    async updateOrderStatus(orderId, status) {
+      try {
+        await axios.post(`/api/v1/dashboard/orders/${orderId}/status`, { new_status: status });
+        await this.loadRestaurantDashboard();
+      } catch (e) {
+        alert("Failed to update status. Please try again.");
+      }
+    },
+    async toggleItemAvailability(item) {
+      try {
+        await axios.post(`/api/v1/dashboard/menu/items/${item.id}/toggle`);
+        item.is_available = !item.is_available;
+      } catch (e) {
+        alert("Failed to toggle item. Please try again.");
+      }
+    },
+
+    // ── Audio Alert ──────────────────────────────
+    playNotificationSound() {
+      const audio = document.getElementById('notificationSound');
+      if (audio) {
+        audio.play().catch(err => console.log('Audio autoplay blocked by browser policy:', err));
+      }
+    },
+
+    // ── WebSocket ────────────────────────────────
+    connectWebSocket() {
+      const token = localStorage.getItem('geqo_token');
+      if (!token) return;
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      this.ws = new WebSocket(`${proto}://${location.host}/api/v1/dashboard/ws?token=${token}`);
+      
+      this.ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'new_order') {
+            this.loadRestaurantDashboard();
+            this.playNotificationSound();
+          }
+        } catch {}
+      };
+      this.ws.onclose = () => setTimeout(() => this.connectWebSocket(), 5000);
+    },
+
+    // ── Helpers ──────────────────────────────────
+    formatCurrency(v) {
+      return v != null ? `${Number(v).toFixed(2)} MAD` : '0.00 MAD';
+    },
+    formatTime(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleTimeString('fr-MA', { hour:'2-digit', minute:'2-digit' });
+    },
+    statusPill(s) {
+      return { received:'pill-amber', accepted:'pill-blue', preparing:'pill-purple', ready:'pill-green', dispatched:'pill-blue', delivered:'pill-gray', cancelled:'pill-red' }[s] || 'pill-gray';
+    },
+  }
+}).mount('#app');
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/static/sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

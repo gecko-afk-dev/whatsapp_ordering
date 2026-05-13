@@ -22,7 +22,16 @@ USER_RATE_LIMITS = {}
 RATE_LIMIT_SECONDS = 1.0  # Max 1 message per second per user
 
 def verify_webhook_signature(request: Request, raw_body: bytes) -> bool:
+<<<<<<< Updated upstream
     secret = settings.WHATSAPP_APP_SECRET
+=======
+    secret = getattr(settings, "WHATSAPP_APP_SECRET", None)
+    
+    # ENFORCED IN PRODUCTION: Do not allow bypass if secret is missing!
+    if not secret:
+        logger.error("CRITICAL: WHATSAPP_APP_SECRET is not configured! Webhook is rejecting all traffic.")
+        return False
+>>>>>>> Stashed changes
 
     signature_header = request.headers.get("X-Hub-Signature-256", "")
     if not signature_header.startswith("sha256="):
@@ -168,6 +177,7 @@ async def handle_events(request: Request):
                     if btn_id == "confirm_order":
                         cart = await get_cart(db, wa_id, restaurant.id)
                         if cart and cart.items:
+<<<<<<< Updated upstream
                             # Convert cart to order (default to delivery; flow
                             # sets the method via the flow submission path)
                             order_data = {
@@ -175,6 +185,18 @@ async def handle_events(request: Request):
                                 "selected_items": [
                                     {
                                         "id": str(item.menu_item_id),
+=======
+                            # Check for existing pending order to get fulfillment method
+                            pending_order = await get_latest_pending_order(db, wa_id)
+                            fulfillment_method = pending_order.fulfillment_method.value if pending_order else "delivery"
+
+                            # Convert cart to order
+                            order_data = {
+                                "method": fulfillment_method,
+                                "selected_items": [
+                                    {
+                                        "id": str(item.menu_item_id), 
+>>>>>>> Stashed changes
                                         "qty": item.quantity,
                                         "exclusions": [exc.ingredient_name for exc in item.exclusions]
                                     }
@@ -184,7 +206,12 @@ async def handle_events(request: Request):
                             order = await OrderService.process_flow_submission(
                                 db, wa_id, restaurant.id, order_data
                             )
+<<<<<<< Updated upstream
                             # Clear cart after order is created
+=======
+                            # Clear cart
+                            from sqlalchemy import delete
+>>>>>>> Stashed changes
                             await db.execute(
                                 delete(CartItem).where(CartItem.cart_id == cart.id)
                             )
@@ -192,6 +219,7 @@ async def handle_events(request: Request):
                                 delete(Cart).where(Cart.id == cart.id)
                             )
                             await db.commit()
+<<<<<<< Updated upstream
 
                             if order.fulfillment_method == FulfillmentMethod.DELIVERY:
                                 await wa_service.request_location(
@@ -205,6 +233,9 @@ async def handle_events(request: Request):
                                     {"event": "NEW_ORDER", "order_id": order.id},
                                 )
                                 await wa_service.send_order_confirmation(wa_id, customer.language)
+=======
+                            await wa_service.send_order_confirmation(wa_id, customer.language)
+>>>>>>> Stashed changes
                         else:
                             await wa_service.send_text_message(wa_id, "Your cart is empty.")
                     elif btn_id == "change_order":

@@ -1,7 +1,11 @@
 import httpx
 import logging
 from app.core.config import settings
+<<<<<<< Updated upstream
 from datetime import datetime, timezone
+=======
+from datetime import datetime
+>>>>>>> Stashed changes
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +93,11 @@ class WhatsAppService:
         Launches the Single-Flow Commerce Experience.
         Token format: session_{wa_id}_{restaurant_id}_{timestamp}
         """
+<<<<<<< Updated upstream
         flow_token = f"session_{to_phone}_{restaurant_id}_{int(datetime.now(timezone.utc).timestamp())}"
+=======
+        flow_token = f"session_{to_phone}_{restaurant_id}_{int(datetime.utcnow().timestamp())}"
+>>>>>>> Stashed changes
 
         await self._post(
             {
