@@ -1,8 +1,4 @@
-<<<<<<< Updated upstream
-from datetime import datetime, timedelta, timezone
-=======
 from datetime import datetime, timedelta
->>>>>>> Stashed changes
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -34,15 +30,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create JWT access token."""
     to_encode = data.copy()
     if expires_delta:
-<<<<<<< Updated upstream
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-=======
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
->>>>>>> Stashed changes
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

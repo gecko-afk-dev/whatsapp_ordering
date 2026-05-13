@@ -17,11 +17,7 @@ from app.models import Base, User, UserRole
 from app.core.auth import get_password_hash
 
 async def create_admin():
-<<<<<<< Updated upstream
-    database_url = os.getenv('DATABASE_URL', 'postgresql+asyncpg://postgres:password123@localhost:5432/whatsapp_food')
-=======
     database_url = os.getenv('DATABASE_URL', 'postgresql+asyncpg://postgres:password123@db:5432/whatsapp_food')
->>>>>>> Stashed changes
 
     engine = create_async_engine(database_url, echo=True)
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

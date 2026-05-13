@@ -7,11 +7,7 @@ from typing import List, Optional
 from datetime import datetime
 from jose import JWTError, jwt
 from app.core.database import AsyncSessionLocal
-<<<<<<< Updated upstream
-from app.core.auth import SECRET_KEY, ALGORITHM, get_current_restaurant_owner, get_current_user
-=======
 from app.core.auth import SECRET_KEY, ALGORITHM, get_current_restaurant_owner
->>>>>>> Stashed changes
 from app.models import Order, OrderStatus, OrderItem, MenuItem, Restaurant, Customer, User, UserRole, Category
 
 from app.services.order_service import OrderService
@@ -111,15 +107,8 @@ async def websocket_endpoint(
 
 
 @router.get("/orders/{restaurant_id}", response_model=List[OrderSchema])
-<<<<<<< Updated upstream
-async def get_active_orders(restaurant_id: int, current_user: User = Depends(get_current_user)):
-    """Returns all non-terminal orders for a restaurant."""
-    if current_user.role == UserRole.RESTAURANT_OWNER and current_user.restaurant_id != restaurant_id:
-        raise HTTPException(status_code=403, detail="Not authorized for this restaurant")
-=======
 async def get_active_orders(restaurant_id: int):
     """Returns all non-terminal orders for a restaurant."""
->>>>>>> Stashed changes
     async with AsyncSessionLocal() as db:
         query = await db.execute(
             select(Order)
@@ -146,10 +135,6 @@ async def update_order_status(
     order_id: int,
     background_tasks: BackgroundTasks,
     body: StatusUpdateBody = Body(...),
-<<<<<<< Updated upstream
-    current_user: User = Depends(get_current_user),
-=======
->>>>>>> Stashed changes
 ):
     """Called when the cashier clicks Accept, Preparing, etc."""
     async with AsyncSessionLocal() as db:
@@ -160,12 +145,6 @@ async def update_order_status(
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
 
-<<<<<<< Updated upstream
-        if current_user.role == UserRole.RESTAURANT_OWNER and current_user.restaurant_id != order.restaurant_id:
-            raise HTTPException(status_code=403, detail="Not authorized for this order")
-
-=======
->>>>>>> Stashed changes
         # Fetch the customer's language preference
         cust_query = select(Customer).where(Customer.wa_id == order.customer_wa_id)
         cust_res = await db.execute(cust_query)
