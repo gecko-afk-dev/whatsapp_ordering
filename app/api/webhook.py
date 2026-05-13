@@ -3,7 +3,7 @@ import hmac
 import json
 import logging
 import time
-from fastapi import APIRouter, Request, Response, Query
+from fastapi import APIRouter, Request, Response
 from sqlalchemy.future import select
 from sqlalchemy import delete
 from app.models import Customer, Restaurant, Order, OrderStatus, FulfillmentMethod, Cart, CartItem
@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- In-Memory Rate Limiter ---
-# Tracks the last time a specific WhatsApp ID interacted to prevent spam.
 USER_RATE_LIMITS = {}
-RATE_LIMIT_SECONDS = 1.0  # Max 1 message per second per user
+RATE_LIMIT_SECONDS = 1.0
+MAX_RATE_LIMIT_ENTRIES = 20000
+
 
 def verify_webhook_signature(request: Request, raw_body: bytes) -> bool:
     secret = getattr(settings, "WHATSAPP_APP_SECRET", None)
     
-    # ENFORCED IN PRODUCTION: Do not allow bypass if secret is missing!
     if not secret:
         logger.error("CRITICAL: WHATSAPP_APP_SECRET is not configured! Webhook is rejecting all traffic.")
         return False
@@ -92,21 +92,19 @@ async def handle_events(request: Request):
         message = value["messages"][0]
         wa_id = message["from"]
 
-        # --- APPLY RATE LIMITING ---
+        # --- RATE LIMITING ---
         now = time.time()
         last_request_time = USER_RATE_LIMITS.get(wa_id, 0)
         
         if now - last_request_time < RATE_LIMIT_SECONDS:
             logger.warning(f"Rate limit exceeded for {wa_id}. Dropping message.")
-            # We return 200 so Meta doesn't queue and retry the spam messages
-            return Response(status_code=200) 
+            return Response(status_code=200)
             
         USER_RATE_LIMITS[wa_id] = now
         
-        # Prevent memory leaks: clear dict if it gets too large
-        if len(USER_RATE_LIMITS) > 20000:
+        if len(USER_RATE_LIMITS) > MAX_RATE_LIMIT_ENTRIES:
             USER_RATE_LIMITS.clear()
-        # ---------------------------
+        # ---------------------
 
         async with AsyncSessionLocal() as db:
             res_query = await db.execute(
@@ -117,12 +115,17 @@ async def handle_events(request: Request):
                 logger.warning("Webhook received for unknown phone_number_id=%s", phone_id)
                 return Response(status_code=200)
 
-            # Create WhatsApp service with restaurant's API token
-            wa_service = WhatsAppService(token=restaurant.api_token, phone_id=restaurant.phone_number_id)
+            wa_service = WhatsAppService(
+                token=restaurant.api_token,
+                phone_id=restaurant.phone_number_id
+            )
 
-            cust_query = await db.execute(select(Customer).where(Customer.wa_id == wa_id))
+            cust_query = await db.execute(
+                select(Customer).where(Customer.wa_id == wa_id)
+            )
             customer = cust_query.scalar_one_or_none()
 
+            # New customer: create and send language picker
             if not customer:
                 customer = Customer(wa_id=wa_id, language=None)
                 db.add(customer)
@@ -130,6 +133,7 @@ async def handle_events(request: Request):
                 await wa_service.send_language_picker(wa_id)
                 return Response(status_code=200)
 
+            # Customer exists but no language selected yet
             if customer.language is None:
                 if (
                     message.get("type") == "interactive"
@@ -145,12 +149,16 @@ async def handle_events(request: Request):
                     await wa_service.send_language_picker(wa_id)
                 return Response(status_code=200)
 
+            # Customer exists with language set
             m_type = message.get("type")
+
             if m_type == "text":
                 await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                return Response(status_code=200)
 
             elif m_type == "interactive":
                 i_type = message["interactive"]["type"]
+
                 if i_type == "nfm_reply":
                     order = await get_latest_pending_order(db, wa_id)
                     if order:
@@ -168,23 +176,30 @@ async def handle_events(request: Request):
                             await wa_service.send_order_confirmation(
                                 wa_id, customer.language
                             )
+                    return Response(status_code=200)
+
                 elif i_type == "button_reply":
                     btn_id = message["interactive"]["button_reply"]["id"]
+
                     if btn_id == "confirm_order":
                         cart = await get_cart(db, wa_id, restaurant.id)
                         if cart and cart.items:
-                            # Check for existing pending order to get fulfillment method
                             pending_order = await get_latest_pending_order(db, wa_id)
-                            fulfillment_method = pending_order.fulfillment_method.value if pending_order else "delivery"
+                            fulfillment_method = (
+                                pending_order.fulfillment_method.value
+                                if pending_order
+                                else "delivery"
+                            )
 
-                            # Convert cart to order
                             order_data = {
                                 "method": fulfillment_method,
                                 "selected_items": [
                                     {
-                                        "id": str(item.menu_item_id), 
+                                        "id": str(item.menu_item_id),
                                         "qty": item.quantity,
-                                        "exclusions": [exc.ingredient_name for exc in item.exclusions]
+                                        "exclusions": [
+                                            exc.ingredient_name for exc in item.exclusions
+                                        ],
                                     }
                                     for item in cart.items
                                 ],
@@ -192,8 +207,6 @@ async def handle_events(request: Request):
                             order = await OrderService.process_flow_submission(
                                 db, wa_id, restaurant.id, order_data
                             )
-                            # Clear cart
-                            from sqlalchemy import delete
                             await db.execute(
                                 delete(CartItem).where(CartItem.cart_id == cart.id)
                             )
@@ -204,10 +217,15 @@ async def handle_events(request: Request):
                             await wa_service.send_order_confirmation(wa_id, customer.language)
                         else:
                             await wa_service.send_text_message(wa_id, "Your cart is empty.")
+                        return Response(status_code=200)
+
                     elif btn_id == "change_order":
                         await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                        return Response(status_code=200)
+
                     else:
                         await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                        return Response(status_code=200)
 
             elif m_type == "location":
                 lat = message["location"]["latitude"]
@@ -223,12 +241,15 @@ async def handle_events(request: Request):
                         {"event": "NEW_ORDER", "order_id": order.id},
                     )
                     await wa_service.send_order_confirmation(wa_id, customer.language)
+                return Response(status_code=200)
 
-        return Response(content="ok", status_code=200)
+            # Fallback for unhandled message types
+            await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+            return Response(status_code=200)
 
     except json.JSONDecodeError:
         logger.exception("Invalid JSON received by webhook")
         return Response(status_code=400)
     except Exception:
         logger.exception("Unexpected webhook error")
-        return Response(content="ok", status_code=500)
+        return Response(status_code=500)
