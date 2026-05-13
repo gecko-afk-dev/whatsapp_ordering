@@ -46,11 +46,11 @@ def verify_webhook_signature(request: Request, raw_body: bytes) -> bool:
 
 
 @router.get("/webhook")
-async def verify_webhook(
-    mode: str = Query(None, alias="hub.mode"),
-    token: str = Query(None, alias="hub.verify_token"),
-    challenge: str = Query(None, alias="hub.challenge"),
-):
+async def verify_webhook(request: Request):
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
     if mode == "subscribe" and token == settings.WHATSAPP_VERIFY_TOKEN:
         return Response(content=str(challenge), media_type="text/plain")
     return Response(content="Verification failed", status_code=403)
