@@ -1,9 +1,5 @@
 from __future__ import annotations
-<<<<<<< Updated upstream
-from datetime import datetime, timezone
-=======
 from datetime import datetime
->>>>>>> Stashed changes
 from enum import Enum as PyEnum
 from typing import List, Optional
 from sqlalchemy import ForeignKey, String, DateTime, Float, Boolean, Text, Enum
@@ -51,11 +47,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole))
     is_active: Mapped[bool] = mapped_column(default=True)
-<<<<<<< Updated upstream
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-=======
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
->>>>>>> Stashed changes
     
     # For restaurant owners
     restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id"))
@@ -78,11 +70,7 @@ class Restaurant(Base):
     cuisine_type: Mapped[Optional[str]] = mapped_column(String(50))
     operating_hours: Mapped[Optional[str]] = mapped_column(Text)  # JSON string
     contact_email: Mapped[Optional[str]] = mapped_column(String(100))
-<<<<<<< Updated upstream
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-=======
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
->>>>>>> Stashed changes
     last_payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
     
     categories: Mapped[List["Category"]] = relationship(back_populates="restaurant")
@@ -158,11 +146,7 @@ class Order(Base):
     latitude: Mapped[Optional[float]] = mapped_column(Float)
     longitude: Mapped[Optional[float]] = mapped_column(Float)
     driver_id: Mapped[Optional[int]] = mapped_column(ForeignKey("drivers.id"))
-<<<<<<< Updated upstream
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-=======
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
->>>>>>> Stashed changes
     
     # Use strings "Restaurant" etc. to avoid NameErrors
     restaurant: Mapped["Restaurant"] = relationship(back_populates="orders")
@@ -207,13 +191,8 @@ class Cart(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_wa_id: Mapped[str] = mapped_column(String(20))
     restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
-<<<<<<< Updated upstream
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-=======
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
->>>>>>> Stashed changes
     
     restaurant: Mapped["Restaurant"] = relationship()
     items: Mapped[List["CartItem"]] = relationship(back_populates="cart", cascade="all, delete-orphan")
@@ -250,11 +229,7 @@ class CartItemModifier(Base):
 class DailyAnalytics(Base):
     __tablename__ = "daily_analytics"
     id: Mapped[int] = mapped_column(primary_key=True)
-<<<<<<< Updated upstream
-    date: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-=======
     date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
->>>>>>> Stashed changes
     restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
     
     total_orders: Mapped[int] = mapped_column(default=0)
