@@ -52,6 +52,11 @@ class User(Base):
     # For restaurant owners
     restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id"))
     restaurant: Mapped[Optional["Restaurant"]] = relationship(back_populates="owner")
+    
+    # Password Reset & Setup
+    reset_token: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    reset_token_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    requires_password_change: Mapped[bool] = mapped_column(default=False)
 
 class Restaurant(Base):
     __tablename__ = "restaurants"

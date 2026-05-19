@@ -1,12 +1,17 @@
 import { createApp, ref, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import Login from './views/Login.js';
 import Dashboard from './views/Dashboard.js';
+import ResetPassword from './views/ResetPassword.js';
+import ForcePasswordChange from './views/ForcePasswordChange.js';
 
 createApp({
-    components: { Login, Dashboard },
+    components: { Login, Dashboard, ResetPassword, ForcePasswordChange },
     setup() {
         const user = ref(null);
         const loading = ref(true);
+        const urlParams = new URLSearchParams(window.location.search);
+        const resetToken = ref(urlParams.get('reset_token') || urlParams.get('setup_token'));
+        const isSetup = ref(urlParams.has('setup_token'));
 
         const checkAuth = () => {
             const token = localStorage.getItem('token');
@@ -32,10 +37,27 @@ createApp({
             user.value = null;
         };
 
+        const handlePasswordResetDone = () => {
+            // Remove token from URL and show login
+            window.history.replaceState({}, document.title, window.location.pathname);
+            resetToken.value = null;
+        };
+
+        const handleForcePasswordUpdated = () => {
+            if (user.value) {
+                user.value.requires_password_change = false;
+                localStorage.setItem('user', JSON.stringify(user.value));
+            }
+        };
+
         onMounted(() => {
-            checkAuth();
+            if (!resetToken.value) {
+                checkAuth();
+            } else {
+                loading.value = false;
+            }
         });
 
-        return { user, loading, handleLogin, handleLogout };
+        return { user, loading, resetToken, isSetup, handleLogin, handleLogout, handlePasswordResetDone, handleForcePasswordUpdated };
     }
 }).mount('#app');

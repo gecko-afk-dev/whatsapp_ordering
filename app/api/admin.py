@@ -9,6 +9,8 @@ import json
 
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_current_admin, get_current_restaurant_owner, User, get_password_hash, verify_password, create_access_token
+from app.services.email import EmailService
+import secrets
 from app.models import (
     Restaurant, RestaurantStatus, PaymentStatus, Order, OrderStatus,
     DailyAnalytics, User as UserModel, UserRole, MenuItem
@@ -103,7 +105,8 @@ async def login(request: LoginRequest):
                 "id": user.id,
                 "email": user.email,
                 "role": user.role.value,
-                "restaurant_id": user.restaurant_id
+                "restaurant_id": user.restaurant_id,
+                "requires_password_change": user.requires_password_change
             }
         )
 
@@ -253,7 +256,26 @@ async def create_restaurant(
         await db.commit()
         await db.refresh(new_restaurant)
 
-        return {"message": "Restaurant created", "restaurant_id": new_restaurant.id}
+        # Create the restaurant owner account
+        setup_token = secrets.token_urlsafe(32)
+        # Using a dummy password hash that can't be logged into normally without the reset/setup flow
+        new_user = UserModel(
+            email=restaurant.contact_email,
+            password_hash=get_password_hash(secrets.token_hex(16)),
+            role=UserRole.RESTAURANT_OWNER,
+            restaurant_id=new_restaurant.id,
+            reset_token=setup_token,
+            reset_token_expiry=datetime.utcnow() + timedelta(days=7),
+            requires_password_change=True
+        )
+        db.add(new_user)
+        await db.commit()
+
+        # Dispatch the setup email
+        from app.services.email import EmailService
+        await EmailService.send_invite_email(restaurant.contact_email, setup_token)
+
+        return {"message": "Restaurant and Manager account created. Invite email sent.", "restaurant_id": new_restaurant.id}
 
 @router.get("/restaurants", response_model=List[dict])
 async def list_restaurants(current_user: User = Depends(get_current_admin)):

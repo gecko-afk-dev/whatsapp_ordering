@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.database import engine
 from app.models import Base
-from app.api import webhook, dashboard, flow_handler, admin, menu, drivers
+from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +52,9 @@ app.include_router(menu.router, prefix="/api/v1/admin/menu")
 
 # 6. Driver Management
 app.include_router(drivers.router, prefix="/api/v1/admin/drivers")
+
+# 7. Authentication
+app.include_router(auth.router, prefix="/api/v1/auth")
 
 @app.get("/")
 def home():

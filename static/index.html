@@ -31,7 +31,24 @@
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen">
-    <div id="app"></div>
+    <div id="app" class="min-h-screen">
+        <div v-if="loading" class="flex items-center justify-center min-h-screen">
+            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+        <template v-else>
+            <!-- Handle Password Reset / Setup via URL link -->
+            <ResetPassword v-if="resetToken" :token="resetToken" :is-setup="isSetup" @done="handlePasswordResetDone"></ResetPassword>
+            
+            <!-- Standard App Flow -->
+            <template v-else>
+                <Login v-if="!user" @login="handleLogin"></Login>
+                <template v-else>
+                    <ForcePasswordChange v-if="user.requires_password_change" :user="user" @updated="handleForcePasswordUpdated"></ForcePasswordChange>
+                    <Dashboard v-else :user="user" @logout="handleLogout"></Dashboard>
+                </template>
+            </template>
+        </template>
+    </div>
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>
