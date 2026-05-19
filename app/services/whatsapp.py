@@ -214,3 +214,25 @@ class WhatsAppService:
         text = status_messages[status][customer_lang]
         
         await self.send_text_message(to_phone, text)
+
+    async def notify_manager_new_order(self, manager_wa_id: str, order_id: int, total: float, method: str):
+        """Sends a notification to the restaurant manager with Accept/Reject buttons."""
+        text = f"🚨 *New Order Received!*\n\n*Order ID:* #{order_id}\n*Type:* {method.capitalize()}\n*Total:* {total} MAD\n\nWhat would you like to do?"
+        
+        await self._post(
+            {
+                "messaging_product": "whatsapp",
+                "to": manager_wa_id,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": text},
+                    "action": {
+                        "buttons": [
+                            {"type": "reply", "reply": {"id": f"mgr_accept_{order_id}", "title": "Accept"}},
+                            {"type": "reply", "reply": {"id": f"mgr_reject_{order_id}", "title": "Reject"}},
+                        ]
+                    },
+                },
+            }
+        )

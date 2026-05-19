@@ -76,3 +76,12 @@ async def get_current_restaurant_owner(current_user: User = Depends(get_current_
             detail="Not enough permissions"
         )
     return current_user
+
+async def get_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Get current user and ensure they are admin or restaurant owner."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user

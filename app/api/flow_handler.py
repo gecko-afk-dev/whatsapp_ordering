@@ -306,7 +306,7 @@ async def process_flow_request(payload: dict):
                 select(MenuItem).where(
                     MenuItem.category_id == cat_id,
                     MenuItem.is_available == True,
-                )
+                ).options(joinedload(MenuItem.modifier_groups).joinedload(ModifierGroup.options))
             )
             items = item_query.scalars().all()
             return {
@@ -320,6 +320,19 @@ async def process_flow_request(payload: dict):
                             "price": f"{i.price} MAD",
                             "item_details": i.item_details if i.item_details else "",
                             "allows_exclusions": i.allows_exclusions,
+                            "modifiers": [
+                                {
+                                    "id": str(g.id),
+                                    "title": getattr(g, f"name_{lang}"),
+                                    "min": g.min_selection,
+                                    "max": g.max_selection,
+                                    "options": [
+                                        {"id": str(o.id), "title": getattr(o, f"name_{lang}") + (f" (+{o.price_override} MAD)" if o.price_override > 0 else "")}
+                                        for o in g.options
+                                    ]
+                                }
+                                for g in i.modifier_groups
+                            ]
                         }
                         for i in items
                     ],
@@ -334,8 +347,9 @@ async def process_flow_request(payload: dict):
             item_id = int(data.get("item_id", 0))
             qty = int(data.get("quantity", 1))
             exclusions = data.get("exclusions", [])
+            modifiers = data.get("modifiers", []) # Expecting list of option IDs
 
-            await add_item_to_cart(db, cart, item_id, qty, None, exclusions)
+            await add_item_to_cart(db, cart, item_id, qty, modifiers, exclusions)
 
             return {
                 "version": "3.0",

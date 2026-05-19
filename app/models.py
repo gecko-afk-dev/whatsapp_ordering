@@ -167,6 +167,7 @@ class OrderItem(Base):
     order: Mapped["Order"] = relationship(back_populates="items")
     menu_item: Mapped["MenuItem"] = relationship()
     exclusions: Mapped[List["OrderItemExclusion"]] = relationship(back_populates="order_item", cascade="all, delete-orphan")
+    modifiers: Mapped[List["OrderItemModifier"]] = relationship(back_populates="order_item", cascade="all, delete-orphan")
 
 class OrderItemExclusion(Base):
     __tablename__ = "order_item_exclusions"
@@ -175,6 +176,15 @@ class OrderItemExclusion(Base):
     ingredient_name: Mapped[str] = mapped_column(String(100))  # e.g., "lettuce", "tomato"
     
     order_item: Mapped["OrderItem"] = relationship(back_populates="exclusions")
+
+class OrderItemModifier(Base):
+    __tablename__ = "order_item_modifiers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_item_id: Mapped[int] = mapped_column(ForeignKey("order_items.id", ondelete="CASCADE"))
+    modifier_option_id: Mapped[int] = mapped_column(ForeignKey("modifier_options.id"))
+    
+    order_item: Mapped["OrderItem"] = relationship(back_populates="modifiers")
+    modifier_option: Mapped["ModifierOption"] = relationship()
 
 class Driver(Base):
     __tablename__ = "drivers"

@@ -140,6 +140,49 @@ async def handle_events(request: Request):
                     and message["interactive"]["type"] == "list_reply"
                 ):
                     sel_id = message["interactive"]["list_reply"]["id"]
+                    
+                    if sel_id.startswith("disp_"):
+                        # Manager dispatching to driver
+                        _, order_id_str, driver_id_str = sel_id.split("_")
+                        order_id = int(order_id_str)
+                        driver_id = int(driver_id_str)
+                        
+                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = order.scalar_one_or_none()
+                        if order:
+                            from app.models import Driver
+                            driver = await db.execute(select(Driver).where(Driver.id == driver_id))
+                            driver = driver.scalar_one_or_none()
+                            
+                            if driver:
+                                order.driver_id = driver.id
+                                order.status = OrderStatus.DISPATCHED
+                                await db.commit()
+                                
+                                # Notify customer
+                                cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
+                                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "dispatched")
+                                
+                                # Notify driver
+                                await wa_service._post({
+                                    "messaging_product": "whatsapp",
+                                    "to": driver.wa_id,
+                                    "type": "interactive",
+                                    "interactive": {
+                                        "type": "button",
+                                        "body": {"text": f"🚚 *New Delivery Assignment!*\n\n*Order ID:* #{order.id}\n*Total to Collect:* {order.total_price} MAD (COD)\n*Location:* https://maps.google.com/?q={order.latitude},{order.longitude}\n\nPlease deliver this order and click the button below when done."},
+                                        "action": {
+                                            "buttons": [
+                                                {"type": "reply", "reply": {"id": f"drv_delivered_{order.id}", "title": "Mark Delivered"}}
+                                            ]
+                                        }
+                                    }
+                                })
+                                
+                                # Acknowledge manager
+                                await wa_service.send_text_message(wa_id, f"Order #{order.id} dispatched to {driver.name}.")
+                        return Response(status_code=200)
+
                     customer.language = (
                         "ar" if "ar" in sel_id else "fr" if "fr" in sel_id else "en"
                     )
@@ -176,6 +219,9 @@ async def handle_events(request: Request):
                             await wa_service.send_order_confirmation(
                                 wa_id, customer.language
                             )
+                            await wa_service.notify_manager_new_order(
+                                restaurant.owner_wa_id, order.id, order.total_price, order.fulfillment_method.value
+                            )
                     return Response(status_code=200)
 
                 elif i_type == "button_reply":
@@ -200,6 +246,9 @@ async def handle_events(request: Request):
                                         "exclusions": [
                                             exc.ingredient_name for exc in item.exclusions
                                         ],
+                                        "modifiers": [
+                                            mod.modifier_option_id for mod in item.modifiers
+                                        ]
                                     }
                                     for item in cart.items
                                 ],
@@ -223,6 +272,117 @@ async def handle_events(request: Request):
                         await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
                         return Response(status_code=200)
 
+                    elif btn_id.startswith("mgr_accept_"):
+                        order_id = int(btn_id.split("_")[2])
+                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = order.scalar_one_or_none()
+                        if order:
+                            order.status = OrderStatus.PREPARING
+                            await db.commit()
+                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "preparing")
+                            
+                            # Give manager next step
+                            if order.fulfillment_method == FulfillmentMethod.DELIVERY:
+                                await wa_service._post({
+                                    "messaging_product": "whatsapp",
+                                    "to": wa_id,
+                                    "type": "interactive",
+                                    "interactive": {
+                                        "type": "button",
+                                        "body": {"text": f"Order #{order_id} is now PREPARING.\nClick Dispatch when it's ready for delivery."},
+                                        "action": {
+                                            "buttons": [
+                                                {"type": "reply", "reply": {"id": f"mgr_dispatch_{order_id}", "title": "Dispatch to Driver"}}
+                                            ]
+                                        }
+                                    }
+                                })
+                            else:
+                                await wa_service._post({
+                                    "messaging_product": "whatsapp",
+                                    "to": wa_id,
+                                    "type": "interactive",
+                                    "interactive": {
+                                        "type": "button",
+                                        "body": {"text": f"Order #{order_id} is now PREPARING.\nClick Ready when customer can pick it up."},
+                                        "action": {
+                                            "buttons": [
+                                                {"type": "reply", "reply": {"id": f"mgr_ready_{order_id}", "title": "Ready for Pickup"}}
+                                            ]
+                                        }
+                                    }
+                                })
+                        return Response(status_code=200)
+
+                    elif btn_id.startswith("mgr_reject_"):
+                        order_id = int(btn_id.split("_")[2])
+                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = order.scalar_one_or_none()
+                        if order:
+                            order.status = OrderStatus.CANCELLED
+                            await db.commit()
+                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "cancelled")
+                            await wa_service.send_text_message(wa_id, f"Order #{order_id} has been rejected.")
+                        return Response(status_code=200)
+
+                    elif btn_id.startswith("mgr_ready_"):
+                        order_id = int(btn_id.split("_")[2])
+                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = order.scalar_one_or_none()
+                        if order:
+                            order.status = OrderStatus.READY
+                            await db.commit()
+                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "ready")
+                            await wa_service.send_text_message(wa_id, f"Order #{order_id} marked as Ready.")
+                        return Response(status_code=200)
+
+                    elif btn_id.startswith("mgr_dispatch_"):
+                        order_id = int(btn_id.split("_")[2])
+                        from app.models import Driver
+                        drivers_req = await db.execute(select(Driver).where(Driver.restaurant_id == restaurant.id, Driver.is_active == True))
+                        drivers = drivers_req.scalars().all()
+                        
+                        if not drivers:
+                            await wa_service.send_text_message(wa_id, "No active drivers available to dispatch.")
+                            return Response(status_code=200)
+                        
+                        rows = [{"id": f"disp_{order_id}_{d.id}", "title": d.name} for d in drivers[:10]]
+                        await wa_service._post({
+                            "messaging_product": "whatsapp",
+                            "recipient_type": "individual",
+                            "to": wa_id,
+                            "type": "interactive",
+                            "interactive": {
+                                "type": "list",
+                                "header": {"type": "text", "text": f"Dispatch Order #{order_id}"},
+                                "body": {"text": "Select a driver:"},
+                                "action": {
+                                    "button": "Drivers",
+                                    "sections": [{"title": "Available Drivers", "rows": rows}]
+                                }
+                            }
+                        })
+                        return Response(status_code=200)
+
+                    elif btn_id.startswith("drv_delivered_"):
+                        order_id = int(btn_id.split("_")[2])
+                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = order.scalar_one_or_none()
+                        if order:
+                            order.status = OrderStatus.DELIVERED
+                            await db.commit()
+                            
+                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "delivered")
+                            await wa_service.send_text_message(wa_id, f"✅ Order #{order.id} marked as Delivered! Great job.")
+                            
+                            # Notify manager
+                            await wa_service.send_text_message(restaurant.owner_wa_id, f"✅ Order #{order.id} has been delivered by the driver.")
+                        return Response(status_code=200)
+
                     else:
                         await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
                         return Response(status_code=200)
@@ -241,6 +401,9 @@ async def handle_events(request: Request):
                         {"event": "NEW_ORDER", "order_id": order.id},
                     )
                     await wa_service.send_order_confirmation(wa_id, customer.language)
+                    await wa_service.notify_manager_new_order(
+                        restaurant.owner_wa_id, order.id, order.total_price, order.fulfillment_method.value
+                    )
                 return Response(status_code=200)
 
             # Fallback for unhandled message types

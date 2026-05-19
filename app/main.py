@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.database import engine
 from app.models import Base
-from app.api import webhook, dashboard, flow_handler, admin
+from app.api import webhook, dashboard, flow_handler, admin, menu, drivers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,7 +47,12 @@ app.include_router(flow_handler.router, prefix="/api/v1/flow")
 # 4. Admin Dashboard (Unified portal for admins and restaurant owners)
 app.include_router(admin.router, prefix="/api/v1/admin")
 
+# 5. Menu Management
+app.include_router(menu.router, prefix="/api/v1/admin/menu")
+
+# 6. Driver Management
+app.include_router(drivers.router, prefix="/api/v1/admin/drivers")
 
 @app.get("/")
 def home():
-    return {"status": "Engine Online", "version": "1.4 - Admin Dashboard Phase 1"}
+    return {"status": "Engine Online", "version": "1.5 - Menu Management Phase"}
