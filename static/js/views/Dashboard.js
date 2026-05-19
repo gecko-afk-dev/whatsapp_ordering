@@ -3,6 +3,7 @@ import Overview from './Overview.js';
 import RestaurantsAdmin from './RestaurantsAdmin.js';
 import MenuManager from './MenuManager.js';
 import DriversManager from './DriversManager.js';
+import OrdersManager from './OrdersManager.js';
 // We can dynamically render these components based on the selected tab
 
 export default {
@@ -42,6 +43,16 @@ export default {
                             Overview
                         </button>
                         
+                        <button v-if="user.role === 'restaurant_owner'" @click="currentView = 'orders'"
+                                :class="currentView === 'orders' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
+                                class="px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap relative">
+                            Active Orders
+                            <span class="absolute top-2 right-1.5 flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                        </button>
+
                         <button v-if="user.role === 'admin'" @click="currentView = 'restaurants'"
                                 :class="currentView === 'restaurants' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
                                 class="px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap">
@@ -71,7 +82,7 @@ export default {
             </main>
         </div>
     `,
-    components: { Overview, RestaurantsAdmin, MenuManager, DriversManager },
+    components: { Overview, RestaurantsAdmin, MenuManager, DriversManager, OrdersManager },
     props: {
         user: Object
     },
@@ -81,6 +92,7 @@ export default {
 
         const currentComponent = computed(() => {
             if (currentView.value === 'overview') return 'Overview';
+            if (currentView.value === 'orders' && props.user.role === 'restaurant_owner') return 'OrdersManager';
             if (currentView.value === 'restaurants' && props.user.role === 'admin') return 'RestaurantsAdmin';
             if (currentView.value === 'menu') return 'MenuManager';
             if (currentView.value === 'drivers') return 'DriversManager';
