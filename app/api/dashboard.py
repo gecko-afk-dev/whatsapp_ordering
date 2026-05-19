@@ -107,8 +107,13 @@ async def websocket_endpoint(
 
 
 @router.get("/orders/{restaurant_id}", response_model=List[OrderSchema])
-async def get_active_orders(restaurant_id: int):
+async def get_active_orders(
+    restaurant_id: int,
+    current_user: User = Depends(get_current_restaurant_owner)
+):
     """Returns all non-terminal orders for a restaurant."""
+    if current_user.restaurant_id != restaurant_id:
+        raise HTTPException(status_code=403, detail="Not authorized to view these orders")
     async with AsyncSessionLocal() as db:
         query = await db.execute(
             select(Order)

@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from app.core.database import engine
+from app.core.config import settings
 from app.models import Base
 from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth
 
@@ -23,13 +25,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GEQO WhatsApp SaaS Engine", lifespan=lifespan)
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logging.exception(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+    )
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS for PWA
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your domains
+    allow_origins=settings.ALLOWED_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

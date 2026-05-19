@@ -43,7 +43,7 @@ class PaymentStatus(PyEnum):
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(100), unique=True)
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole))
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -62,7 +62,7 @@ class Restaurant(Base):
     __tablename__ = "restaurants"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
-    wa_phone_number: Mapped[str] = mapped_column(String(20), unique=True)
+    wa_phone_number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     api_token: Mapped[str] = mapped_column(Text)
     phone_number_id: Mapped[str] = mapped_column(String(50))
     owner_wa_id: Mapped[str] = mapped_column(String(20))
@@ -86,7 +86,7 @@ class Restaurant(Base):
 class Customer(Base):
     __tablename__ = "customers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    wa_id: Mapped[str] = mapped_column(String(20), unique=True)
+    wa_id: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(100))
     language: Mapped[Optional[str]] = mapped_column(String(5))
 
@@ -143,8 +143,8 @@ class ModifierOption(Base):
 class Order(Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
-    customer_wa_id: Mapped[str] = mapped_column(String(20))
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), index=True)
+    customer_wa_id: Mapped[str] = mapped_column(String(20), index=True)
     fulfillment_method: Mapped[FulfillmentMethod] = mapped_column(Enum(FulfillmentMethod))
     status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus), default=OrderStatus.PENDING)
     total_price: Mapped[float] = mapped_column(Float, default=0.0)

@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     WHATSAPP_FLOW_ID: str
     WHATSAPP_APP_SECRET: str
     SECRET_KEY: str
+    ALLOWED_ORIGINS: str = "*"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
