@@ -40,8 +40,11 @@ export default {
                     <div class="p-5 flex-1">
                         <ul class="space-y-3 mb-4">
                             <li v-for="item in order.items" :key="item.id" class="text-sm flex justify-between">
-                                <span class="text-slate-700"><span class="font-semibold">{{ item.quantity }}x</span> Item #{{ item.menu_item_id }}</span>
-                                <span class="text-slate-500">{{ item.unit_price * item.quantity }}</span>
+                                <span class="text-slate-700">
+                                    <span class="font-semibold">{{ item.quantity }}x</span> 
+                                    {{ item.name_en || 'Item #' + item.menu_item_id }}
+                                </span>
+                                <span class="text-slate-500">{{ item.unit_price * item.quantity }} MAD</span>
                             </li>
                         </ul>
                         <div class="mt-4 pt-4 border-t border-slate-100">

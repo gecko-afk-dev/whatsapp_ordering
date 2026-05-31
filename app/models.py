@@ -27,6 +27,8 @@ class FulfillmentMethod(PyEnum):
 class UserRole(PyEnum):
     ADMIN = "admin"
     RESTAURANT_OWNER = "restaurant_owner"
+    CASHIER = "cashier"
+    KITCHEN_STAFF = "kitchen_staff"
 
 class RestaurantStatus(PyEnum):
     ACTIVE = "active"
@@ -253,3 +255,15 @@ class DailyAnalytics(Base):
     unique_customers: Mapped[int] = mapped_column(default=0)
     
     restaurant: Mapped["Restaurant"] = relationship()
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    actor_email: Mapped[str] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(100), index=True)  # e.g. ORDER_STATUS_UPDATED
+    target: Mapped[Optional[str]] = mapped_column(String(100))    # e.g. order_id=42
+    detail: Mapped[Optional[str]] = mapped_column(Text)            # human-readable summary
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

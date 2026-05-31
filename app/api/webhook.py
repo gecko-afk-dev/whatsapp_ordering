@@ -120,29 +120,17 @@ async def handle_events(request: Request):
                 phone_id=restaurant.phone_number_id
             )
 
-            cust_query = await db.execute(
-                select(Customer).where(Customer.wa_id == wa_id)
-            )
-            customer = cust_query.scalar_one_or_none()
+            m_type = message.get("type")
 
-            # New customer: create and send language picker
-            if not customer:
-                customer = Customer(wa_id=wa_id, language=None)
-                db.add(customer)
-                await db.commit()
-                await wa_service.send_language_picker(wa_id)
-                return Response(status_code=200)
-
-            # Customer exists but no language selected yet
-            if customer.language is None:
-                if (
-                    message.get("type") == "interactive"
-                    and message["interactive"]["type"] == "list_reply"
-                ):
-                    sel_id = message["interactive"]["list_reply"]["id"]
-                    
+            # 1. Global Intercept for System Actions (Managers & Drivers)
+            if m_type == "interactive":
+                interactive_msg = message["interactive"]
+                i_type = interactive_msg["type"]
+                
+                # Handle List Replies (Driver Dispatching)
+                if i_type == "list_reply":
+                    sel_id = interactive_msg["list_reply"]["id"]
                     if sel_id.startswith("disp_"):
-                        # Manager dispatching to driver
                         _, order_id_str, driver_id_str = sel_id.split("_")
                         order_id = int(order_id_str)
                         driver_id = int(driver_id_str)
@@ -183,6 +171,26 @@ async def handle_events(request: Request):
                                 await wa_service.send_text_message(wa_id, f"Order #{order.id} dispatched to {driver.name}.")
                         return Response(status_code=200)
 
+            cust_query = await db.execute(
+                select(Customer).where(Customer.wa_id == wa_id)
+            )
+            customer = cust_query.scalar_one_or_none()
+
+            # New customer: create and send language picker
+            if not customer:
+                customer = Customer(wa_id=wa_id, language=None)
+                db.add(customer)
+                await db.commit()
+                await wa_service.send_language_picker(wa_id)
+                return Response(status_code=200)
+
+            # Customer exists but no language selected yet
+            if customer.language is None:
+                if (
+                    m_type == "interactive"
+                    and message["interactive"]["type"] == "list_reply"
+                ):
+                    sel_id = message["interactive"]["list_reply"]["id"]
                     customer.language = (
                         "ar" if "ar" in sel_id else "fr" if "fr" in sel_id else "en"
                     )
@@ -193,7 +201,6 @@ async def handle_events(request: Request):
                 return Response(status_code=200)
 
             # Customer exists with language set
-            m_type = message.get("type")
 
             if m_type == "text":
                 await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)

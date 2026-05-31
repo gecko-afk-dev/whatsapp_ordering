@@ -25,10 +25,10 @@ export default {
                     <StatCard title="Revenue Today" :value="'$' + (adminStats.total_revenue_today || 0).toFixed(2)" icon="$" color="amber" />
                 </template>
                 
-                <!-- Restaurant Owner Stats -->
-                <template v-if="user.role === 'restaurant_owner'">
+                <!-- Restaurant Staff & Owner Stats -->
+                <template v-if="['restaurant_owner', 'cashier'].includes(user.role)">
                     <StatCard title="Orders Today" :value="ownerStats.orders" icon="O" color="blue" />
-                    <StatCard title="Revenue Today" :value="'$' + (ownerStats.revenue || 0).toFixed(2)" icon="$" color="green" />
+                    <StatCard v-if="user.role === 'restaurant_owner'" title="Revenue Today" :value="'$' + (ownerStats.revenue || 0).toFixed(2)" icon="$" color="green" />
                 </template>
             </div>
         </div>
@@ -72,7 +72,7 @@ export default {
                 if (props.user.role === 'admin') {
                     const res = await api.get('/admin/analytics/summary');
                     adminStats.value = res.data;
-                } else if (props.user.role === 'restaurant_owner') {
+                } else if (['restaurant_owner', 'cashier'].includes(props.user.role)) {
                     const res = await api.get('/admin/restaurant/dashboard');
                     ownerStats.value = res.data.today_stats || { orders: 0, revenue: 0 };
                 }

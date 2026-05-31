@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,12 +8,12 @@ from pydantic import BaseModel, EmailStr
 import json
 
 from app.core.database import AsyncSessionLocal
-from app.core.auth import get_current_admin, get_current_restaurant_owner, User, get_password_hash, verify_password, create_access_token
+from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
 from app.services.email import EmailService
 import secrets
 from app.models import (
     Restaurant, RestaurantStatus, PaymentStatus, Order, OrderStatus,
-    DailyAnalytics, User as UserModel, UserRole, MenuItem
+    DailyAnalytics, User as UserModel, UserRole, MenuItem, AuditLog
 )
 
 router = APIRouter()
@@ -109,6 +109,33 @@ async def login(request: LoginRequest):
                 "requires_password_change": user.requires_password_change
             }
         )
+
+@router.post("/setup-admin", response_model=dict)
+async def setup_admin():
+    """First-time admin setup (idempotent, only runs if no admin exists)."""
+    async with AsyncSessionLocal() as db:
+        # Check if any admin exists
+        result = await db.execute(select(UserModel).where(UserModel.role == UserRole.ADMIN))
+        existing_admin = result.scalar_one_or_none()
+        
+        if existing_admin:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Setup already completed. Admin user already exists."
+            )
+            
+        # Create admin user
+        admin_user = UserModel(
+            email="admin@geqo.com",
+            password_hash=get_password_hash("admin123"),
+            role=UserRole.ADMIN,
+            is_active=True,
+            requires_password_change=True
+        )
+        db.add(admin_user)
+        await db.commit()
+        
+        return {"message": "Admin account initialized successfully. Please login immediately."}
 
 # --- Admin Routes ---
 
@@ -354,8 +381,8 @@ async def activate_restaurant(
 # --- Restaurant Owner Routes ---
 
 @router.get("/restaurant/dashboard")
-async def get_restaurant_dashboard(current_user: User = Depends(get_current_restaurant_owner)):
-    """Get dashboard data for restaurant owner."""
+async def get_restaurant_dashboard(current_user: User = Depends(get_current_cashier_or_above)):
+    """Get dashboard data for restaurant staff and owner."""
     if not current_user.restaurant_id:
         raise HTTPException(status_code=400, detail="No restaurant assigned")
 
@@ -444,3 +471,224 @@ async def toggle_item_availability(
         await db.commit()
 
         return {"message": "Item availability updated", "is_available": item.is_available}
+
+
+# --- Staff Management & Audit Log Schemas & Endpoints ---
+
+class StaffInviteRequest(BaseModel):
+    email: EmailStr
+    role: UserRole
+
+class StaffResponse(BaseModel):
+    id: int
+    email: EmailStr
+    role: str
+    is_active: bool
+    requires_password_change: bool
+
+    class Config:
+        from_attributes = True
+
+class AuditLogResponse(BaseModel):
+    id: int
+    restaurant_id: Optional[int]
+    actor_user_id: Optional[int]
+    actor_email: EmailStr
+    action: str
+    target: Optional[str]
+    detail: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+async def write_audit_log(
+    db: AsyncSession,
+    user: UserModel,
+    action: str,
+    target: Optional[str] = None,
+    detail: Optional[str] = None
+):
+    """Helper to record audit log entry inside the database."""
+    log_entry = AuditLog(
+        restaurant_id=user.restaurant_id,
+        actor_user_id=user.id,
+        actor_email=user.email,
+        action=action,
+        target=target,
+        detail=detail
+    )
+    db.add(log_entry)
+    await db.commit()
+
+@router.get("/staff", response_model=List[StaffResponse])
+async def list_staff(current_user: User = Depends(get_current_restaurant_owner)):
+    """List all staff members for the restaurant owner's restaurant."""
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+    
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(UserModel).where(
+                and_(
+                    UserModel.restaurant_id == current_user.restaurant_id,
+                    UserModel.role.in_([UserRole.CASHIER, UserRole.KITCHEN_STAFF])
+                )
+            )
+        )
+        staff = result.scalars().all()
+        return staff
+
+@router.post("/staff/invite", response_model=dict)
+async def invite_staff(
+    request: StaffInviteRequest,
+    current_user: User = Depends(get_current_restaurant_owner)
+):
+    """Invite a new cashier or kitchen staff member by email."""
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+
+    if request.role not in [UserRole.CASHIER, UserRole.KITCHEN_STAFF]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role. You can only invite Cashier or Kitchen Staff."
+        )
+
+    async with AsyncSessionLocal() as db:
+        # Check if email already exists
+        existing = await db.execute(select(UserModel).where(UserModel.email == request.email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+
+        setup_token = secrets.token_urlsafe(32)
+        # Create user record with a temporary random password
+        new_staff = UserModel(
+            email=request.email,
+            password_hash=get_password_hash(secrets.token_hex(16)),
+            role=request.role,
+            restaurant_id=current_user.restaurant_id,
+            is_active=True,
+            reset_token=setup_token,
+            reset_token_expiry=datetime.utcnow() + timedelta(days=7),
+            requires_password_change=True
+        )
+        db.add(new_staff)
+        await db.commit()
+        await db.refresh(new_staff)
+
+        # Write audit log
+        await write_audit_log(
+            db=db,
+            user=current_user,
+            action="STAFF_INVITED",
+            target=f"user_id={new_staff.id}",
+            detail=f"Invited staff user {new_staff.email} as {new_staff.role.value}"
+        )
+
+        # Send the setup/invite email
+        await EmailService.send_staff_invite_email(new_staff.email, new_staff.role.value, setup_token)
+
+        return {"message": f"Staff invited successfully. Invite email sent to {new_staff.email}."}
+
+@router.post("/staff/{user_id}/toggle", response_model=dict)
+async def toggle_staff_status(
+    user_id: int,
+    current_user: User = Depends(get_current_restaurant_owner)
+):
+    """Toggle a staff member's active status."""
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(UserModel).where(
+                and_(
+                    UserModel.id == user_id,
+                    UserModel.restaurant_id == current_user.restaurant_id,
+                    UserModel.role.in_([UserRole.CASHIER, UserRole.KITCHEN_STAFF])
+                )
+            )
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="Staff user not found")
+
+        # Toggle active status
+        user.is_active = not user.is_active
+        await db.commit()
+
+        status_text = "activated" if user.is_active else "deactivated"
+        
+        # Write audit log
+        await write_audit_log(
+            db=db,
+            user=current_user,
+            action="STAFF_STATUS_TOGGLED",
+            target=f"user_id={user.id}",
+            detail=f"Staff user {user.email} status set to {status_text}"
+        )
+
+        return {"message": f"Staff user has been {status_text}.", "is_active": user.is_active}
+
+@router.delete("/staff/{user_id}", response_model=dict)
+async def remove_staff(
+    user_id: int,
+    current_user: User = Depends(get_current_restaurant_owner)
+):
+    """Permanently delete a staff member from the restaurant."""
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(UserModel).where(
+                and_(
+                    UserModel.id == user_id,
+                    UserModel.restaurant_id == current_user.restaurant_id,
+                    UserModel.role.in_([UserRole.CASHIER, UserRole.KITCHEN_STAFF])
+                )
+            )
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="Staff user not found")
+
+        email = user.email
+        await db.delete(user)
+        await db.commit()
+
+        # Write audit log
+        await write_audit_log(
+            db=db,
+            user=current_user,
+            action="STAFF_REMOVED",
+            target=f"user_id={user_id}",
+            detail=f"Removed staff user {email}"
+        )
+
+        return {"message": "Staff member successfully removed."}
+
+@router.get("/audit-log", response_model=List[AuditLogResponse])
+async def get_audit_log(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve audit logs. Owners see their own restaurant's logs; Admins see all logs."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
+    async with AsyncSessionLocal() as db:
+        query = select(AuditLog)
+        if current_user.role == UserRole.RESTAURANT_OWNER:
+            if not current_user.restaurant_id:
+                raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+            query = query.where(AuditLog.restaurant_id == current_user.restaurant_id)
+        
+        query = query.order_by(desc(AuditLog.created_at)).offset(offset).limit(limit)
+        res = await db.execute(query)
+        logs = res.scalars().all()
+        return logs
