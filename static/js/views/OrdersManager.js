@@ -113,13 +113,13 @@ export default {
             if (!props.user || !props.user.restaurant_id) return;
             const token = localStorage.getItem('token');
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = \`\${protocol}//\${window.location.host}/api/v1/dashboard/ws/\${props.user.restaurant_id}?token=\${token}\`;
-            
+            const wsUrl = `${protocol}//${window.location.host}/api/v1/dashboard/ws/${props.user.restaurant_id}?token=${token}`;
+
             ws = new WebSocket(wsUrl);
-            
+
             ws.onopen = () => { wsConnected.value = true; };
             ws.onclose = () => { wsConnected.value = false; setTimeout(initWebSocket, 3000); };
-            
+
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.event === 'NEW_ORDER' || data.event === 'ORDER_STATUS_UPDATED') {
