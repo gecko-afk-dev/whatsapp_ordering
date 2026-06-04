@@ -314,6 +314,12 @@ async def list_restaurants(current_user: User = Depends(get_current_admin)):
         return [{
             "id": r.id,
             "name": r.name,
+            "wa_phone_number": r.wa_phone_number,
+            "api_token": r.api_token,
+            "phone_number_id": r.phone_number_id,
+            "owner_wa_id": r.owner_wa_id,
+            "address": r.address,
+            "cuisine_type": r.cuisine_type,
             "status": r.status.value,
             "payment_status": r.payment_status.value,
             "commission_rate": r.commission_rate,

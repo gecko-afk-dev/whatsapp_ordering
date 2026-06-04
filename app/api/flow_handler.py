@@ -74,11 +74,13 @@ def encrypt_response(response_data, aes_key, initial_vector):
     return base64.b64encode(encrypted_data + encryptor.tag).decode("utf-8")
 
 
+from typing import Optional
+
 # ---------------------------------------------------------------------------
 # Token helpers
 # ---------------------------------------------------------------------------
 
-def parse_flow_token(flow_token: str) -> tuple[str, int | None]:
+def parse_flow_token(flow_token: str) -> tuple[str, Optional[int]]:
     """
     Token format: session_{wa_id}_{restaurant_id}_{timestamp}
     Returns (wa_id, restaurant_id). Both are empty/None on parse failure.
@@ -369,27 +371,96 @@ async def process_flow_request(payload: dict):
             }
 
         if action == "data_exchange" and screen == "CART_SCREEN":
-            if data.get("action") == "remove_item":
-                item_id = int(data.get("item_id"))
-                await db.execute(
-                    delete(CartItem).where(CartItem.id == item_id, CartItem.cart_id == cart.id)
+            cart_action = data.get("action", "")
+
+            # ── Remove single item from cart ──────────────────────────────
+            if cart_action == "remove_item":
+                item_id = int(data.get("item_id", 0))
+                if item_id:
+                    await db.execute(
+                        delete(CartItem).where(
+                            CartItem.id == item_id,
+                            CartItem.cart_id == cart.id  # ensure ownership
+                        )
+                    )
+                    await db.commit()
+                # Return updated cart state
+                cart_items, total = await get_cart_summary(db, cart, lang)
+                return {
+                    "version": "3.0",
+                    "screen": "CART_SCREEN",
+                    "data": await get_cart_data(db, cart, lang),
+                }
+
+            # ── Loop-back: "Modifier" — go back to categories, cart intact ──
+            # Heuristic: tapping Modifier/Continue Shopping reloads the menu
+            # screen while preserving all existing cart items.
+            if cart_action in ("continue_shopping", "modify"):
+                # Refresh language from DB to ensure preference is current
+                fresh_lang_row = await db.execute(
+                    select(Customer.language).where(Customer.wa_id == wa_id)
                 )
-                await db.commit()
-            elif data.get("action") == "confirm":
-                if not cart.items:
+                lang = fresh_lang_row.scalar_one_or_none() or lang
+
+                cat_query = await db.execute(
+                    select(Category).where(Category.restaurant_id == restaurant_id)
+                )
+                categories = cat_query.scalars().all()
+                return {
+                    "version": "3.0",
+                    "screen": "CATEGORIES_SCREEN",
+                    "data": {
+                        "categories": [
+                            {"id": str(c.id), "title": getattr(c, f"name_{lang}")}
+                            for c in categories
+                        ]
+                    },
+                }
+
+            # ── Confirm order — empty cart guard ─────────────────────────
+            if cart_action == "confirm":
+                # Re-load cart items to get accurate count (avoid race condition)
+                cart_check = await db.execute(
+                    select(CartItem).where(CartItem.cart_id == cart.id)
+                )
+                cart_item_rows = cart_check.scalars().all()
+
+                if not cart_item_rows:
+                    # Fail closed: do not close the Flow if cart is empty
                     return {
                         "version": "3.0",
-                        "screen": "ERROR_SCREEN",
-                        "data": {"error_message": "Your cart is empty. Please add items."},
+                        "screen": "CART_SCREEN",
+                        "data": {
+                            "cart_items": [],
+                            "total": "0 MAD",
+                            "error": "Votre panier est vide. Ajoutez des articles d'abord."
+                            if lang == "fr" else
+                            "سلة الطلبات فارغة. أضف عناصر أولاً."
+                            if lang == "ar" else
+                            "Your cart is empty. Please add items first.",
+                        },
                     }
-                # Send cart summary via WhatsApp
+
+                # Cart has items — send WhatsApp summary and close Flow
                 cart_items, total = await get_cart_summary(db, cart, lang)
                 await wa_service.send_cart_summary(wa_id, lang, cart_items, total)
                 return {
                     "version": "3.0",
                     "screen": "SUCCESS_SCREEN",
-                    "data": {"message": "Order submitted for review."},
+                    "data": {
+                        "message": "Commande envoyée! Partagez votre position."
+                        if lang == "fr" else
+                        "تم إرسال طلبك! شارك موقعك."
+                        if lang == "ar" else
+                        "Order sent! Please share your location."
+                    },
                 }
 
-        # Default
+        # Default fallback — return current cart state if possible
+        if cart:
+            return {
+                "version": "3.0",
+                "screen": "CART_SCREEN",
+                "data": await get_cart_data(db, cart, lang),
+            }
         return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Done"}}

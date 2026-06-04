@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+import { ref, onMounted, onUnmounted, computed } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import { api } from '../api.js';
 
 export default {
@@ -128,7 +128,7 @@ export default {
             };
         };
 
-        const sortedOrders = Vue.computed(() => {
+        const sortedOrders = computed(() => {
             // Sort by status priority then ID
             const statusWeights = { 'received': 1, 'accepted': 2, 'preparing': 3, 'ready': 4 };
             return [...orders.value].sort((a, b) => {

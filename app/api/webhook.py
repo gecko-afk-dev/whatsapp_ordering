@@ -120,6 +120,34 @@ async def handle_events(request: Request):
                 phone_id=restaurant.phone_number_id
             )
 
+            # ── SUSPENSION KILL-SWITCH ─────────────────────────────────────
+            # If the restaurant is suspended, intercept ALL inbound customer
+            # messages and reply with a maintenance notice. No order processing
+            # is performed. This is evaluated before any other message logic.
+            if getattr(restaurant, "status", "active") != "active":
+                # Extract sender wa_id safely to send the maintenance reply.
+                _sender_wa_id = message.get("from", "")
+                if _sender_wa_id:
+                    _maintenance_msg = (
+                        "🔧 *Ce restaurant est temporairement en maintenance.*\n"
+                        "Veuillez réessayer plus tard. Désolé pour la gêne.\n\n"
+                        "هذا المطعم في صيانة مؤقتة. يرجى المحاولة لاحقاً.\n\n"
+                        "This restaurant is temporarily under maintenance. Please try again later."
+                    )
+                    try:
+                        await wa_service.send_text_message(_sender_wa_id, _maintenance_msg)
+                    except Exception:
+                        logger.warning(
+                            "Could not send maintenance notice to %s for suspended restaurant %s",
+                            _sender_wa_id, restaurant.id
+                        )
+                logger.info(
+                    "Blocked message routing for suspended restaurant id=%s phone_id=%s",
+                    restaurant.id, phone_id
+                )
+                return Response(status_code=200)
+            # ──────────────────────────────────────────────────────────────
+
             m_type = message.get("type")
 
             # 1. Global Intercept for System Actions (Managers & Drivers)
