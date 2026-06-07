@@ -27,6 +27,8 @@ class FulfillmentMethod(PyEnum):
 class UserRole(PyEnum):
     ADMIN = "admin"
     RESTAURANT_OWNER = "restaurant_owner"
+    CASHIER = "cashier"
+    KITCHEN_STAFF = "kitchen_staff"
 
 class RestaurantStatus(PyEnum):
     ACTIVE = "active"
@@ -43,7 +45,7 @@ class PaymentStatus(PyEnum):
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(100), unique=True)
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole))
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -52,12 +54,17 @@ class User(Base):
     # For restaurant owners
     restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id"))
     restaurant: Mapped[Optional["Restaurant"]] = relationship(back_populates="owner")
+    
+    # Password Reset & Setup
+    reset_token: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    reset_token_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    requires_password_change: Mapped[bool] = mapped_column(default=False)
 
 class Restaurant(Base):
     __tablename__ = "restaurants"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
-    wa_phone_number: Mapped[str] = mapped_column(String(20), unique=True)
+    wa_phone_number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     api_token: Mapped[str] = mapped_column(Text)
     phone_number_id: Mapped[str] = mapped_column(String(50))
     owner_wa_id: Mapped[str] = mapped_column(String(20))
@@ -81,7 +88,7 @@ class Restaurant(Base):
 class Customer(Base):
     __tablename__ = "customers"
     id: Mapped[int] = mapped_column(primary_key=True)
-    wa_id: Mapped[str] = mapped_column(String(20), unique=True)
+    wa_id: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(100))
     language: Mapped[Optional[str]] = mapped_column(String(5))
 
@@ -138,8 +145,8 @@ class ModifierOption(Base):
 class Order(Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
-    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
-    customer_wa_id: Mapped[str] = mapped_column(String(20))
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), index=True)
+    customer_wa_id: Mapped[str] = mapped_column(String(20), index=True)
     fulfillment_method: Mapped[FulfillmentMethod] = mapped_column(Enum(FulfillmentMethod))
     status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus), default=OrderStatus.PENDING)
     total_price: Mapped[float] = mapped_column(Float, default=0.0)
@@ -167,6 +174,7 @@ class OrderItem(Base):
     order: Mapped["Order"] = relationship(back_populates="items")
     menu_item: Mapped["MenuItem"] = relationship()
     exclusions: Mapped[List["OrderItemExclusion"]] = relationship(back_populates="order_item", cascade="all, delete-orphan")
+    modifiers: Mapped[List["OrderItemModifier"]] = relationship(back_populates="order_item", cascade="all, delete-orphan")
 
 class OrderItemExclusion(Base):
     __tablename__ = "order_item_exclusions"
@@ -175,6 +183,15 @@ class OrderItemExclusion(Base):
     ingredient_name: Mapped[str] = mapped_column(String(100))  # e.g., "lettuce", "tomato"
     
     order_item: Mapped["OrderItem"] = relationship(back_populates="exclusions")
+
+class OrderItemModifier(Base):
+    __tablename__ = "order_item_modifiers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_item_id: Mapped[int] = mapped_column(ForeignKey("order_items.id", ondelete="CASCADE"))
+    modifier_option_id: Mapped[int] = mapped_column(ForeignKey("modifier_options.id"))
+    
+    order_item: Mapped["OrderItem"] = relationship(back_populates="modifiers")
+    modifier_option: Mapped["ModifierOption"] = relationship()
 
 class Driver(Base):
     __tablename__ = "drivers"
@@ -238,3 +255,15 @@ class DailyAnalytics(Base):
     unique_customers: Mapped[int] = mapped_column(default=0)
     
     restaurant: Mapped["Restaurant"] = relationship()
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("restaurants.id"), nullable=True, index=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    actor_email: Mapped[str] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(100), index=True)  # e.g. ORDER_STATUS_UPDATED
+    target: Mapped[Optional[str]] = mapped_column(String(100))    # e.g. order_id=42
+    detail: Mapped[Optional[str]] = mapped_column(Text)            # human-readable summary
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

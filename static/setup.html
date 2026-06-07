@@ -37,7 +37,7 @@
             result.innerHTML = 'Creating admin user...';
 
             try {
-                const response = await fetch('/admin/setup-admin', {
+                const response = await fetch('/api/v1/admin/setup-admin', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

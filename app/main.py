@@ -3,9 +3,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from app.core.database import engine
+from app.core.config import settings
 from app.models import Base
-from app.api import webhook, dashboard, flow_handler, admin
+from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,14 +25,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GEQO WhatsApp SaaS Engine", lifespan=lifespan)
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logging.exception(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+    )
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS for PWA
+origins = settings.ALLOWED_ORIGINS.split(",")
+allow_credentials = True
+if "*" in origins:
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your domains
-    allow_credentials=True,
+    allow_origins=origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -47,7 +62,15 @@ app.include_router(flow_handler.router, prefix="/api/v1/flow")
 # 4. Admin Dashboard (Unified portal for admins and restaurant owners)
 app.include_router(admin.router, prefix="/api/v1/admin")
 
+# 5. Menu Management
+app.include_router(menu.router, prefix="/api/v1/admin/menu")
+
+# 6. Driver Management
+app.include_router(drivers.router, prefix="/api/v1/admin/drivers")
+
+# 7. Authentication
+app.include_router(auth.router, prefix="/api/v1/auth")
 
 @app.get("/")
 def home():
-    return {"status": "Engine Online", "version": "1.4 - Admin Dashboard Phase 1"}
+    return {"status": "Engine Online", "version": "1.5 - Menu Management Phase"}

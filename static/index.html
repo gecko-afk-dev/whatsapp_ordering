@@ -3,550 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2563eb">
+    <meta name="theme-color" content="#121212">
+    <meta name="description" content="GEQO — WhatsApp-first ordering platform admin dashboard for restaurant operators and super-admins.">
     <title>GEQO Admin Dashboard</title>
     <link rel="manifest" href="/static/manifest.json">
     <link rel="icon" href="/static/icon-192.png">
+
+    <!-- Fonts: Plus Jakarta Sans (Latin) + Cairo (Arabic / Darija) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CDN + Direction B Design Tokens -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-<body class="bg-gray-100">
-    <div id="app" class="min-h-screen">
-        <!-- Login Screen -->
-        <div v-if="!user" class="flex items-center justify-center min-h-screen">
-            <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-                <h1 class="text-2xl font-bold text-center mb-6">GEQO Admin Dashboard</h1>
-                <form @submit.prevent="login" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Email</label>
-                        <input v-model="loginForm.email" type="email" required
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Password</label>
-                        <input v-model="loginForm.password" type="password" required
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <button type="submit" :disabled="loading"
-                            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50">
-                        <span v-if="loading">Signing in...</span>
-                        <span v-else>Sign In</span>
-                    </button>
-                </form>
-                <div v-if="error" class="mt-4 text-red-600 text-sm">{{ error }}</div>
-            </div>
-        </div>
-
-        <!-- Main Dashboard -->
-        <div v-else>
-            <!-- Header -->
-            <header class="bg-white shadow">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex justify-between items-center py-4">
-                        <h1 class="text-2xl font-bold text-gray-900">GEQO Dashboard</h1>
-                        <div class="flex items-center space-x-4">
-                            <span class="text-sm text-gray-600">{{ user.email }} ({{ user.role }})</span>
-                            <button @click="logout" class="text-sm text-red-600 hover:text-red-800">Logout</button>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <!-- Navigation -->
-            <nav class="bg-blue-600">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex space-x-8">
-                        <button @click="currentView = 'overview'"
-                                :class="currentView === 'overview' ? 'bg-blue-700 text-white' : 'text-blue-100 hover:bg-blue-500'"
-                                class="px-3 py-2 rounded-md text-sm font-medium">
-                            Overview
-                        </button>
-                        <button v-if="user.role === 'admin'" @click="currentView = 'restaurants'"
-                                :class="currentView === 'restaurants' ? 'bg-blue-700 text-white' : 'text-blue-100 hover:bg-blue-500'"
-                                class="px-3 py-2 rounded-md text-sm font-medium">
-                            Restaurants
-                        </button>
-                        <button v-if="user.role === 'restaurant_owner'" @click="currentView = 'restaurant'"
-                                :class="currentView === 'restaurant' ? 'bg-blue-700 text-white' : 'text-blue-100 hover:bg-blue-500'"
-                                class="px-3 py-2 rounded-md text-sm font-medium">
-                            My Restaurant
-                        </button>
-                    </div>
-                </div>
-            </nav>
-
-            <!-- Content -->
-            <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                <!-- Overview -->
-                <div v-if="currentView === 'overview'" class="px-4 py-6 sm:px-0">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">R</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Total Restaurants</dt>
-                                            <dd class="text-lg font-medium text-gray-900">{{ analytics.total_restaurants || 0 }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">O</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Orders Today</dt>
-                                            <dd class="text-lg font-medium text-gray-900">{{ analytics.total_orders_today || 0 }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">$</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Revenue Today</dt>
-                                            <dd class="text-lg font-medium text-gray-900">${{ analytics.total_revenue_today?.toFixed(2) || '0.00' }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">A</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Avg Order Value</dt>
-                                            <dd class="text-lg font-medium text-gray-900">${{ analytics.avg_order_value?.toFixed(2) || '0.00' }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Restaurant Performance Table (Admin Only) -->
-                    <div v-if="user.role === 'admin'" class="bg-white shadow overflow-hidden sm:rounded-md">
-                        <div class="px-4 py-5 sm:px-6">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900">Restaurant Performance</h3>
-                        </div>
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Restaurant</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Orders Today</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Revenue Today</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white divide-y divide-gray-200">
-                                    <tr v-for="restaurant in restaurantAnalytics" :key="restaurant.restaurant_id">
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ restaurant.restaurant_name }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ restaurant.orders_today }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${{ restaurant.revenue_today.toFixed(2) }}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <span :class="restaurant.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
-                                                  class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full">
-                                                {{ restaurant.status }}
-                                            </span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <button v-if="restaurant.status === 'active'" @click="suspendRestaurant(restaurant.restaurant_id)"
-                                                    class="text-red-600 hover:text-red-900 mr-2">Suspend</button>
-                                            <button v-else @click="activateRestaurant(restaurant.restaurant_id)"
-                                                    class="text-green-600 hover:text-green-900">Activate</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Restaurants Management (Admin Only) -->
-                <div v-if="currentView === 'restaurants' && user.role === 'admin'" class="px-4 py-6 sm:px-0">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-gray-900">Restaurant Management</h2>
-                        <button @click="showCreateRestaurant = true"
-                                class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-                            Add Restaurant
-                        </button>
-                    </div>
-
-                    <!-- Create Restaurant Modal -->
-                    <div v-if="showCreateRestaurant" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-                        <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-                            <div class="mt-3">
-                                <h3 class="text-lg font-medium text-gray-900 mb-4">Add New Restaurant</h3>
-                                <form @submit.prevent="createRestaurant" class="space-y-4">
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">Name</label>
-                                            <input v-model="restaurantForm.name" type="text" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">WhatsApp Phone</label>
-                                            <input v-model="restaurantForm.wa_phone_number" type="text" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">API Token</label>
-                                            <input v-model="restaurantForm.api_token" type="text" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">Phone Number ID</label>
-                                            <input v-model="restaurantForm.phone_number_id" type="text" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">Owner WhatsApp ID</label>
-                                            <input v-model="restaurantForm.owner_wa_id" type="text" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">Contact Email</label>
-                                            <input v-model="restaurantForm.contact_email" type="email" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">Cuisine Type</label>
-                                            <input v-model="restaurantForm.cuisine_type" type="text"
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700">Commission Rate</label>
-                                            <input v-model="restaurantForm.commission_rate" type="number" step="0.01" min="0" max="1" required
-                                                   class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                        </div>
-                                    </div>
-                                    <div class="flex justify-end space-x-3 pt-4">
-                                        <button type="button" @click="showCreateRestaurant = false"
-                                                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200">
-                                            Cancel
-                                        </button>
-                                        <button type="submit" :disabled="loading"
-                                                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50">
-                                            Create Restaurant
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Restaurant Dashboard (Restaurant Owner) -->
-                <div v-if="currentView === 'restaurant' && user.role === 'restaurant_owner'" class="px-4 py-6 sm:px-0">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">My Restaurant Dashboard</h2>
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">O</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Orders Today</dt>
-                                            <dd class="text-lg font-medium text-gray-900">{{ restaurantDashboard.today_stats?.orders || 0 }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">$</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Revenue Today</dt>
-                                            <dd class="text-lg font-medium text-gray-900">${{ restaurantDashboard.today_stats?.revenue?.toFixed(2) || '0.00' }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-5">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                                            <span class="text-white text-sm font-bold">P</span>
-                                        </div>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">Pending Orders</dt>
-                                            <dd class="text-lg font-medium text-gray-900">{{ restaurantDashboard.pending_orders?.length || 0 }}</dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Pending Orders -->
-                    <div class="bg-white shadow overflow-hidden sm:rounded-md">
-                        <div class="px-4 py-5 sm:px-6">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900">Pending Orders</h3>
-                        </div>
-                        <ul class="divide-y divide-gray-200">
-                            <li v-for="order in restaurantDashboard.pending_orders" :key="order.id" class="px-4 py-4 sm:px-6">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center">
-                                        <div class="flex-shrink-0 h-10 w-10">
-                                            <div class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                                                <span class="text-sm font-medium text-gray-700">{{ order.customer_wa_id.slice(-4) }}</span>
-                                            </div>
-                                        </div>
-                                        <div class="ml-4">
-                                            <div class="text-sm font-medium text-gray-900">Order #{{ order.id }}</div>
-                                            <div class="text-sm text-gray-500">${{ order.total_price.toFixed(2) }}</div>
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <span :class="getStatusColor(order.status)"
-                                              class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
-                                            {{ order.status }}
-                                        </span>
-                                        <button @click="updateOrderStatus(order.id, 'accepted')"
-                                                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-                                            Accept
-                                        </button>
-                                    </div>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </main>
-        </div>
-    </div>
-
     <script>
-        const { createApp } = Vue;
-
-        createApp({
-            data() {
-                return {
-                    user: null,
-                    loading: false,
-                    error: null,
-                    currentView: 'overview',
-                    loginForm: {
-                        email: '',
-                        password: ''
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans:    ['"Plus Jakarta Sans"', 'Cairo', 'sans-serif'],
+                        cairo:   ['Cairo', 'sans-serif'],
+                        jakarta: ['"Plus Jakarta Sans"', 'sans-serif'],
                     },
-                    analytics: {},
-                    restaurantAnalytics: [],
-                    showCreateRestaurant: false,
-                    restaurantForm: {
-                        name: '',
-                        wa_phone_number: '',
-                        api_token: '',
-                        phone_number_id: '',
-                        owner_wa_id: '',
-                        contact_email: '',
-                        cuisine_type: '',
-                        commission_rate: 0.20
+                    colors: {
+                        /* ── Direction B: Maghreb Charcoal & Saffron ── */
+                        canvas:  '#121212',
+                        surface: '#1E1E1E',
+                        saffron: {
+                            DEFAULT: '#F59E0B',
+                            light:   '#FCD34D',
+                            dark:    '#D97706',
+                        },
+                        berry: {
+                            DEFAULT: '#8B5CF6',
+                            light:   '#A78BFA',
+                            dark:    '#7C3AED',
+                        },
+                        emerald: {
+                            DEFAULT: '#10B981',
+                            light:   '#34D399',
+                            dark:    '#059669',
+                        },
+                        harissa: {
+                            DEFAULT: '#EF4444',
+                            light:   '#FCA5A5',
+                            dark:    '#DC2626',
+                        },
+                        /* ── SuperAdmin Pitch-Black Canvas ── */
+                        superadmin: {
+                            bg:      '#0A0A0A',
+                            border:  '#262626',
+                            surface: '#111111',
+                        },
                     },
-                    restaurantDashboard: {
-                        restaurant: {},
-                        today_stats: {},
-                        pending_orders: []
-                    }
-                }
-            },
-            mounted() {
-                const token = localStorage.getItem('token');
-                if (token) {
-                    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                    this.getCurrentUser();
-                }
-            },
-            methods: {
-                async login() {
-                    this.loading = true;
-                    this.error = null;
-                    try {
-                        const response = await axios.post('/api/v1/admin/login', this.loginForm);
-                        const { access_token, user } = response.data;
-                        localStorage.setItem('token', access_token);
-                        axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-                        this.user = user;
-                        this.currentView = user.role === 'admin' ? 'overview' : 'restaurant';
-                        await this.loadDashboardData();
-                    } catch (error) {
-                        this.error = error.response?.data?.detail || 'Login failed';
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                logout() {
-                    localStorage.removeItem('token');
-                    delete axios.defaults.headers.common['Authorization'];
-                    this.user = null;
-                    this.currentView = 'overview';
-                },
-                async getCurrentUser() {
-                    try {
-                        // We don't have a dedicated endpoint, but we can use the token validation
-                        await this.loadDashboardData();
-                    } catch (error) {
-                        this.logout();
-                    }
-                },
-                async loadDashboardData() {
-                    if (this.user?.role === 'admin') {
-                        await Promise.all([
-                            this.loadAnalytics(),
-                            this.loadRestaurantAnalytics()
-                        ]);
-                    } else if (this.user?.role === 'restaurant_owner') {
-                        await this.loadRestaurantDashboard();
-                    }
-                },
-                async loadAnalytics() {
-                    try {
-                        const response = await axios.get('/api/v1/admin/analytics/summary');
-                        this.analytics = response.data;
-                    } catch (error) {
-                        console.error('Failed to load analytics:', error);
-                    }
-                },
-                async loadRestaurantAnalytics() {
-                    try {
-                        const response = await axios.get('/api/v1/admin/analytics/restaurants');
-                        this.restaurantAnalytics = response.data;
-                    } catch (error) {
-                        console.error('Failed to load restaurant analytics:', error);
-                    }
-                },
-                async loadRestaurantDashboard() {
-                    try {
-                        const response = await axios.get('/api/v1/admin/restaurant/dashboard');
-                        this.restaurantDashboard = response.data;
-                    } catch (error) {
-                        console.error('Failed to load restaurant dashboard:', error);
-                    }
-                },
-                async createRestaurant() {
-                    this.loading = true;
-                    try {
-                        await axios.post('/api/v1/admin/restaurants', this.restaurantForm);
-                        this.showCreateRestaurant = false;
-                        this.restaurantForm = {
-                            name: '',
-                            wa_phone_number: '',
-                            api_token: '',
-                            phone_number_id: '',
-                            owner_wa_id: '',
-                            contact_email: '',
-                            cuisine_type: '',
-                            commission_rate: 0.20
-                        };
-                        // Reload data
-                        await this.loadAnalytics();
-                        await this.loadRestaurantAnalytics();
-                    } catch (error) {
-                        this.error = error.response?.data?.detail || 'Failed to create restaurant';
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                async suspendRestaurant(restaurantId) {
-                    try {
-                        await axios.post(`/api/v1/admin/restaurants/${restaurantId}/suspend`);
-                        await this.loadRestaurantAnalytics();
-                    } catch (error) {
-                        console.error('Failed to suspend restaurant:', error);
-                    }
-                },
-                async activateRestaurant(restaurantId) {
-                    try {
-                        await axios.post(`/api/v1/admin/restaurants/${restaurantId}/activate`);
-                        await this.loadRestaurantAnalytics();
-                    } catch (error) {
-                        console.error('Failed to activate restaurant:', error);
-                    }
-                },
-                async updateOrderStatus(orderId, status) {
-                    try {
-                        await axios.post(`/api/v1/dashboard/orders/${orderId}/status`, { new_status: status });
-                        await this.loadRestaurantDashboard();
-                    } catch (error) {
-                        console.error('Failed to update order status:', error);
-                    }
-                },
-                getStatusColor(status) {
-                    const colors = {
-                        'received': 'bg-yellow-100 text-yellow-800',
-                        'accepted': 'bg-blue-100 text-blue-800',
-                        'preparing': 'bg-orange-100 text-orange-800',
-                        'ready': 'bg-green-100 text-green-800',
-                        'dispatched': 'bg-purple-100 text-purple-800',
-                        'delivered': 'bg-gray-100 text-gray-800',
-                        'cancelled': 'bg-red-100 text-red-800'
-                    };
-                    return colors[status] || 'bg-gray-100 text-gray-800';
+                    animation: {
+                        'urgency-pulse': 'urgencyPulse 1s ease-in-out infinite',
+                        'slide-up':      'slideUp 0.25s ease-out',
+                        'fade-in':       'fadeIn 0.2s ease-out',
+                        'shimmer':       'shimmer 1.5s infinite linear',
+                    },
+                    keyframes: {
+                        urgencyPulse: {
+                            '0%,100%': { boxShadow: '0 0 0 0 rgba(245,158,11,0.4)' },
+                            '50%':     { boxShadow: '0 0 0 8px rgba(245,158,11,0)' },
+                        },
+                        slideUp: {
+                            from: { transform: 'translateY(100%)', opacity: '0' },
+                            to:   { transform: 'translateY(0)',    opacity: '1' },
+                        },
+                        fadeIn: {
+                            from: { opacity: '0' },
+                            to:   { opacity: '1' },
+                        },
+                        shimmer: {
+                            '0%':   { backgroundPosition: '-200% 0' },
+                            '100%': { backgroundPosition:  '200% 0' },
+                        },
+                    },
                 }
             }
-        }).mount('#app');
-
-        // Register service worker for PWA
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/sw.js')
-                    .then(registration => {
-                        console.log('ServiceWorker registered:', registration);
-                    })
-                    .catch(error => {
-                        console.log('ServiceWorker registration failed:', error);
-                    });
-            });
         }
     </script>
+    <link rel="stylesheet" href="/static/css/index.css">
+
+    <!-- Axios HTTP client -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-canvas text-slate-100 font-sans antialiased min-h-screen">
+    <div id="app" class="min-h-screen">
+        <!-- Initial auth-check loader -->
+        <div v-if="loading" class="flex flex-col items-center justify-center min-h-screen gap-4">
+            <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-saffron"></div>
+            <span class="text-slate-500 text-xs font-semibold tracking-[0.2em] uppercase">GEQO</span>
+        </div>
+
+        <template v-else>
+            <!-- Password reset / account setup (URL token flow) -->
+            <ResetPassword
+                v-if="resetToken"
+                :token="resetToken"
+                :is-setup="isSetup"
+                @done="handlePasswordResetDone">
+            </ResetPassword>
+
+            <!-- Standard authenticated flow -->
+            <template v-else>
+                <Login v-if="!user" @login="handleLogin"></Login>
+                <template v-else>
+                    <ForcePasswordChange
+                        v-if="user.requires_password_change"
+                        :user="user"
+                        @updated="handleForcePasswordUpdated">
+                    </ForcePasswordChange>
+                    <Dashboard v-else :user="user" @logout="handleLogout"></Dashboard>
+                </template>
+            </template>
+        </template>
+    </div>
+
+    <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

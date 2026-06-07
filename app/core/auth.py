@@ -76,3 +76,46 @@ async def get_current_restaurant_owner(current_user: User = Depends(get_current_
             detail="Not enough permissions"
         )
     return current_user
+
+async def get_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Get current user and ensure they are admin or restaurant owner."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user
+
+async def get_current_cashier_or_above(current_user: User = Depends(get_current_user)) -> User:
+    """Allows RESTAURANT_OWNER and CASHIER (covers order mgmt + driver dispatch)."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER, UserRole.CASHIER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user
+
+async def get_current_kitchen_or_above(current_user: User = Depends(get_current_user)) -> User:
+    """Allows RESTAURANT_OWNER, CASHIER, and KITCHEN_STAFF (read access to orders)."""
+    if current_user.role not in [
+        UserRole.ADMIN, UserRole.RESTAURANT_OWNER,
+        UserRole.CASHIER, UserRole.KITCHEN_STAFF
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user
+
+def assert_restaurant_access(current_user: User, restaurant_id: int) -> None:
+    """
+    Verify that a non-admin user belongs to the requested restaurant.
+    Raises HTTP 403 on tenant boundary violation.
+    """
+    if current_user.role == UserRole.ADMIN:
+        return  # admins can access any restaurant
+    if current_user.restaurant_id != restaurant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this restaurant"
+        )
