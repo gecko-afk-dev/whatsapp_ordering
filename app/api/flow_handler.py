@@ -6,7 +6,7 @@ from sqlalchemy import delete
 import os
 import base64
 from fastapi import APIRouter, Request
-from fastapi.responses import PlainTextResponse/
+from fastapi.responses import PlainTextResponse
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Category, MenuItem, Customer, Restaurant,
