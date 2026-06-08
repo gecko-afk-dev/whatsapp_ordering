@@ -6,6 +6,7 @@ from sqlalchemy import delete
 import os
 import base64
 from fastapi import APIRouter, Request
+from fastapi.responses import PlainTextResponse/
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Category, MenuItem, Customer, Restaurant,
@@ -217,8 +218,11 @@ async def flow_data_exchange(request: Request):
             response_data = await process_flow_request(decrypted_payload)
             encrypted_response = encrypt_response(response_data, aes_key, initial_vector)
             logger.info("Sending encrypted response to Meta")
-            return encrypted_response
+            
+            # FIX: Return as raw Plain Text, NOT as JSON!
+            return PlainTextResponse(content=encrypted_response)
 
+        # If not encrypted (local testing), return normal JSON
         logger.info(
             "Plain Flow Request: action=%s, screen=%s",
             payload.get("action"),
@@ -236,11 +240,12 @@ async def flow_data_exchange(request: Request):
             "data": {"error_message": f"Server error: {str(e)}"},
         }
 
+        # FIX: Ensure errors are also returned as PlainText if the request was encrypted
         if aes_key and initial_vector:
-            return encrypt_response(error_response, aes_key, initial_vector)
+            encrypted_err = encrypt_response(error_response, aes_key, initial_vector)
+            return PlainTextResponse(content=encrypted_err)
 
         return error_response
-
 
 # ---------------------------------------------------------------------------
 # Flow logic
