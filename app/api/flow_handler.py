@@ -28,54 +28,20 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def load_private_key():
+    # 1. Try to load from Render Environment Variable first (Production)
+    priv_key_env = os.environ.get("PRIVATE_KEY")
+    if priv_key_env:
+        # Render sometimes escapes newlines, so we ensure it's formatted correctly
+        priv_key_env = priv_key_env.replace("\\n", "\n")
+        return serialization.load_pem_private_key(priv_key_env.encode("utf-8"), password=None)
+
+    # 2. Fall back to local file (Local Development)
     private_key_path = "private.pem"
     if not os.path.exists(private_key_path):
-        raise FileNotFoundError(f"Private key not found: {private_key_path}")
+        raise FileNotFoundError(f"Private key not found in env var PRIVATE_KEY or file {private_key_path}")
+    
     with open(private_key_path, "rb") as f:
         return serialization.load_pem_private_key(f.read(), password=None)
-
-
-def decrypt_request(encrypted_aes_key_b64, encrypted_flow_data_b64, initial_vector_b64):
-    """Decrypt Meta's encrypted request payload."""
-    private_key = load_private_key()
-
-    encrypted_aes_key = base64.b64decode(encrypted_aes_key_b64)
-    encrypted_flow_data = base64.b64decode(encrypted_flow_data_b64)
-    initial_vector = base64.b64decode(initial_vector_b64)
-
-    aes_key = private_key.decrypt(
-        encrypted_aes_key,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None,
-        ),
-    )
-
-    encrypted_body = encrypted_flow_data[:-16]
-    auth_tag = encrypted_flow_data[-16:]
-
-    cipher = Cipher(algorithms.AES(aes_key), modes.GCM(initial_vector, auth_tag))
-    decryptor = cipher.decryptor()
-    decrypted_data = decryptor.update(encrypted_body) + decryptor.finalize()
-    payload = json.loads(decrypted_data.decode("utf-8"))
-
-    return payload, aes_key, initial_vector
-
-
-def encrypt_response(response_data, aes_key, initial_vector):
-    """Encrypt response payload for Meta (IV must be flipped)."""
-    flipped_iv = bytes(b ^ 0xFF for b in initial_vector)
-    response_json = json.dumps(response_data).encode("utf-8")
-
-    cipher = Cipher(algorithms.AES(aes_key), modes.GCM(flipped_iv))
-    encryptor = cipher.encryptor()
-    encrypted_data = encryptor.update(response_json) + encryptor.finalize()
-
-    return base64.b64encode(encrypted_data + encryptor.tag).decode("utf-8")
-
-
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Token helpers
