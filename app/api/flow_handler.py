@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Optional
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy import delete
