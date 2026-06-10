@@ -2,7 +2,6 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from app.core.database import engine
 from app.core.config import settings
@@ -33,10 +32,7 @@ async def global_exception_handler(request, exc):
         content={"detail": "Internal Server Error"},
     )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# CORS for PWA
+# CORS for Frontend
 origins = settings.ALLOWED_ORIGINS.split(",")
 allow_credentials = True
 if "*" in origins:
