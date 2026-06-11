@@ -11,3 +11,7 @@ passlib==1.7.4
 bcrypt==3.2.2
 email-validator==2.2.0
 python-multipart==0.0.9
+pre-commit==3.8.0
+ruff==0.6.5
+bandit==1.7.9
+safety==3.2.7
