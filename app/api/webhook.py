@@ -403,6 +403,7 @@ async def handle_events(request: Request):
                         return Response(status_code=200)
 
                     elif btn_id.startswith("drv_delivered_"):
+                        # We are moving delivery confirmation to the Flow PIN entry, but keeping this as a fallback if needed.
                         order_id = int(btn_id.split("_")[2])
                         order = await db.execute(select(Order).where(Order.id == order_id))
                         order = order.scalar_one_or_none()
@@ -416,6 +417,31 @@ async def handle_events(request: Request):
                             
                             # Notify manager
                             await wa_service.send_text_message(restaurant.owner_wa_id, f"✅ Order #{order.id} has been delivered by the driver.")
+                        return Response(status_code=200)
+
+                    elif btn_id.startswith("claim_order_"):
+                        order_id = int(btn_id.split("_")[2])
+                        from app.models import Driver
+                        driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active == True))
+                        driver = driver_req.scalar_one_or_none()
+                        if driver:
+                            order_req = await db.execute(select(Order).where(Order.id == order_id))
+                            order = order_req.scalar_one_or_none()
+                            if order and order.driver_id is None and order.status == OrderStatus.DISPATCHED:
+                                # Claim the order
+                                order.driver_id = driver.id
+                                await db.commit()
+                                # Send direct delivery card
+                                await wa_service.send_driver_dispatch_card(
+                                    to_phone=driver.wa_id,
+                                    order_id=order.id,
+                                    latitude=order.latitude or 0.0,
+                                    longitude=order.longitude or 0.0
+                                )
+                                # Notify manager
+                                await wa_service.send_text_message(restaurant.owner_wa_id, f"Order #{order.id} claimed by driver {driver.name}.")
+                            elif order and order.driver_id is not None:
+                                await wa_service.send_text_message(wa_id, "Sorry, this order has already been claimed by another driver.")
                         return Response(status_code=200)
 
                     else:

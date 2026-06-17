@@ -1,9 +1,21 @@
 import json
+import secrets
+import string
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod, OrderItemModifier, ModifierOption
+from app.models import Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod, OrderItemModifier, ModifierOption, Driver
 
 class OrderService:
+    @staticmethod
+    async def generate_delivery_pin(db: AsyncSession) -> str:
+        """Generate a globally unique 6-character alphanumeric PIN."""
+        characters = string.ascii_uppercase + string.digits
+        while True:
+            pin = ''.join(secrets.choice(characters) for _ in range(6))
+            res = await db.execute(select(Order).where(Order.delivery_pin == pin))
+            if not res.scalar_one_or_none():
+                return pin
+
     @staticmethod
     async def process_flow_submission(db: AsyncSession, wa_id: str, restaurant_id: int, flow_data: dict):
         """
@@ -108,7 +120,8 @@ class OrderService:
         customer_wa_id: str,
         customer_lang: str,
         order_id: int,
-        status: str
+        status: str,
+        delivery_pin: str = None
     ):
         """
         Background task to send WhatsApp status updates without slowing down the dashboard API.
@@ -117,9 +130,57 @@ class OrderService:
         from app.services.whatsapp import WhatsAppService
 
         ws = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
+        # If accepted/dispatched and there's a delivery pin, include it in the status notification
+        # For brevity, let's say the whatsapp service will fetch the order again if needed, or we just pass it
         await ws.send_order_status_notification(
             to_phone=customer_wa_id,
             lang=customer_lang,
             order_id=order_id,
-            status=status
+            status=status,
+            delivery_pin=delivery_pin
         )
+
+    @staticmethod
+    async def notify_driver_dispatch_background(
+        restaurant_token: str,
+        restaurant_phone_id: str,
+        driver_wa_id: str,
+        order_id: int,
+        latitude: float,
+        longitude: float
+    ):
+        """Send Direct Assignment Card to a specific driver."""
+        from app.services.whatsapp import WhatsAppService
+        ws = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
+        await ws.send_driver_dispatch_card(
+            to_phone=driver_wa_id,
+            order_id=order_id,
+            latitude=latitude,
+            longitude=longitude
+        )
+
+    @staticmethod
+    async def notify_drivers_broadcast_background(
+        db: AsyncSession, # Note: using DB in background task can be tricky if session is closed. Better to pass list of wa_ids or let the method create a new session
+        restaurant_token: str,
+        restaurant_phone_id: str,
+        restaurant_id: int,
+        order_id: int
+    ):
+        """Send Broadcast Card to all active drivers."""
+        from app.services.whatsapp import WhatsAppService
+        from app.core.database import AsyncSessionLocal
+        
+        ws = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
+        
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(
+                select(Driver).where(Driver.restaurant_id == restaurant_id, Driver.is_active == True)
+            )
+            drivers = res.scalars().all()
+            
+            for driver in drivers:
+                await ws.send_driver_broadcast_card(
+                    to_phone=driver.wa_id,
+                    order_id=order_id
+                )

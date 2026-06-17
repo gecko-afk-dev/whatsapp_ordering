@@ -48,21 +48,28 @@ def load_private_key():
 # Token helpers
 # ---------------------------------------------------------------------------
 
-def parse_flow_token(flow_token: str) -> tuple[str, Optional[int]]:
+def parse_flow_token(flow_token: str) -> tuple[str, str, Optional[int]]:
     """
-    Token format: session_{wa_id}_{restaurant_id}_{timestamp}
-    Returns (wa_id, restaurant_id). Both are empty/None on parse failure.
+    Returns (token_type, wa_id, entity_id). 
+    token_type: "session" (customer) or "driver"
+    entity_id: restaurant_id (for session) or order_id (for driver)
     """
-    parts = flow_token.rsplit("_", 3)
-    if len(parts) != 4 or parts[0] != "session":
-        return "", None
-
-    wa_id = parts[1]
-    try:
-        restaurant_id = int(parts[2])
-        return wa_id, restaurant_id
-    except ValueError:
-        return "", None
+    if flow_token.startswith("session_"):
+        parts = flow_token.rsplit("_", 3)
+        if len(parts) == 4:
+            try:
+                return "session", parts[1], int(parts[2])
+            except ValueError:
+                pass
+    elif flow_token.startswith("driver_"):
+        # driver_{order_id}_{to_phone}
+        parts = flow_token.split("_", 2)
+        if len(parts) == 3:
+            try:
+                return "driver", parts[2], int(parts[1])
+            except ValueError:
+                pass
+    return "", "", None
 
 
 async def get_or_create_cart(db, wa_id: str, restaurant_id: int):
@@ -229,9 +236,9 @@ async def process_flow_request(payload: dict):
         logger.info("Health check received from Meta")
         return {"data": {"status": "active"}}
 
-    wa_id, restaurant_id = parse_flow_token(flow_token)
+    token_type, wa_id, entity_id = parse_flow_token(flow_token)
 
-    if not wa_id or not restaurant_id:
+    if not token_type or not wa_id or not entity_id:
         return {
             "version": "3.0",
             "screen": "ERROR_SCREEN",
@@ -239,6 +246,79 @@ async def process_flow_request(payload: dict):
         }
 
     async with AsyncSessionLocal() as db:
+        
+        # --- DRIVER PIN VERIFICATION LOGIC ---
+        if token_type == "driver":
+            order_id = entity_id
+            order_req = await db.execute(select(Order).options(joinedload(Order.restaurant)).where(Order.id == order_id))
+            order = order_req.scalar_one_or_none()
+            
+            if not order:
+                return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Order not found."}}
+                
+            restaurant = order.restaurant
+            wa_service = WhatsAppService(token=restaurant.api_token, phone_id=restaurant.phone_number_id)
+            
+            if action == "data_exchange" and screen == "CONFIRM_DELIVERY_SCREEN":
+                pin_entered = data.get("delivery_pin", "").strip().upper()
+                
+                if order.status == OrderStatus.DELIVERED:
+                    return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Already delivered!"}}
+                
+                # Check PIN
+                if not order.delivery_pin or order.delivery_pin.upper() != pin_entered:
+                    return {
+                        "version": "3.0",
+                        "screen": "CONFIRM_DELIVERY_SCREEN",
+                        "data": {
+                            "error_message": "Invalid PIN. Please try again.",
+                            "order_id": order_id
+                        }
+                    }
+                
+                # Verify Driver
+                from app.models import Driver
+                driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active == True))
+                driver = driver_req.scalar_one_or_none()
+                if not driver or driver.id != order.driver_id:
+                    return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
+                
+                # Success
+                order.status = OrderStatus.DELIVERED
+                await db.commit()
+                
+                # Notify Dashboard
+                await manager.broadcast_to_restaurant(restaurant.id, {"event": "ORDER_STATUS_UPDATED", "order_id": order.id, "new_status": "delivered"})
+                
+                # Notify Customer
+                cust_req = await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))
+                cust_lang = cust_req.scalar_one_or_none() or "fr"
+                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "delivered")
+                
+                # Thank you message to customer
+                thank_you_map = {
+                    "fr": f"🙏 Merci pour votre commande #{order.id} ! À très bientôt.",
+                    "ar": f"🙏 شكراً لطلبك رقم {order.id}! نراكم قريباً.",
+                    "en": f"🙏 Thank you for your order #{order.id}! See you soon."
+                }
+                await wa_service.send_text_message(order.customer_wa_id, thank_you_map[cust_lang])
+                
+                # Success screen for driver
+                return {
+                    "version": "3.0",
+                    "screen": "SUCCESS_SCREEN",
+                    "data": {"message": "Delivery Confirmed! 🚚"}
+                }
+                
+            # Default for driver flow
+            return {
+                "version": "3.0",
+                "screen": "CONFIRM_DELIVERY_SCREEN",
+                "data": {"order_id": order_id, "error_message": ""}
+            }
+        
+        # --- CUSTOMER MENU LOGIC ---
+        restaurant_id = entity_id
         # Get restaurant for API token
         rest_res = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
         restaurant = rest_res.scalar_one_or_none()

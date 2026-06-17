@@ -170,7 +170,7 @@ class WhatsAppService:
             }
         )
 
-    async def send_order_status_notification(self, to_phone: str, lang: str, order_id: int, status: str):
+    async def send_order_status_notification(self, to_phone: str, lang: str, order_id: int, status: str, delivery_pin: str = None):
         """Sends translated status updates to the customer"""
         status_messages = {
             "accepted": {
@@ -213,6 +213,10 @@ class WhatsAppService:
         customer_lang = lang if lang in ["fr", "ar", "en"] else "fr"
         text = status_messages[status][customer_lang]
         
+        if delivery_pin and status in ["accepted", "dispatched"]:
+            pin_text = f"\n\n🔑 Votre code PIN de livraison / رمز التوصيل الخاص بك / Your delivery PIN is: *{delivery_pin}*\nGardez-le pour confirmer la livraison. / احتفظ به لتأكيد التوصيل. / Keep it to confirm delivery."
+            text += pin_text
+        
         await self.send_text_message(to_phone, text)
 
     async def notify_manager_new_order(self, manager_wa_id: str, order_id: int, total: float, method: str):
@@ -231,6 +235,54 @@ class WhatsAppService:
                         "buttons": [
                             {"type": "reply", "reply": {"id": f"mgr_accept_{order_id}", "title": "Accept"}},
                             {"type": "reply", "reply": {"id": f"mgr_reject_{order_id}", "title": "Reject"}},
+                        ]
+                    },
+                },
+            }
+        )
+
+    async def send_driver_dispatch_card(self, to_phone: str, order_id: int, latitude: float, longitude: float):
+        """Sends a card to the driver with location and a button to confirm delivery (opens flow)."""
+        flow_token = f"driver_{order_id}_{to_phone}"
+        loc_str = f"Lat: {latitude}, Lng: {longitude}"
+        await self._post(
+            {
+                "messaging_product": "whatsapp",
+                "to": to_phone,
+                "type": "interactive",
+                "interactive": {
+                    "type": "flow",
+                    "header": {"type": "text", "text": f"Delivery Order #{order_id}"},
+                    "body": {"text": f"Deliver to: {loc_str}\nTap below when you reach the customer to confirm delivery."},
+                    "action": {
+                        "name": "flow",
+                        "parameters": {
+                            "flow_message_version": "3",
+                            "flow_token": flow_token,
+                            "flow_id": settings.WHATSAPP_FLOW_ID,
+                            "flow_cta": "Confirm Delivery",
+                            "flow_action": "navigate",
+                            "flow_action_payload": {"screen": "CONFIRM_DELIVERY_SCREEN", "data": {"order_id": order_id}},
+                        },
+                    },
+                },
+            }
+        )
+
+    async def send_driver_broadcast_card(self, to_phone: str, order_id: int):
+        """Sends a notification to drivers that an order is available to claim."""
+        text = f"🚨 *New Delivery Available!*\n\n*Order ID:* #{order_id}\n\nDo you want to claim this delivery?"
+        await self._post(
+            {
+                "messaging_product": "whatsapp",
+                "to": to_phone,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": text},
+                    "action": {
+                        "buttons": [
+                            {"type": "reply", "reply": {"id": f"claim_order_{order_id}", "title": "Claim Order"}},
                         ]
                     },
                 },

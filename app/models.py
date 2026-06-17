@@ -153,6 +153,7 @@ class Order(Base):
     latitude: Mapped[Optional[float]] = mapped_column(Float)
     longitude: Mapped[Optional[float]] = mapped_column(Float)
     driver_id: Mapped[Optional[int]] = mapped_column(ForeignKey("drivers.id"))
+    delivery_pin: Mapped[Optional[str]] = mapped_column(String(20), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     # Use strings "Restaurant" etc. to avoid NameErrors

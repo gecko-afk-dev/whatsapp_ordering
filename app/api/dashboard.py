@@ -12,7 +12,7 @@ from app.core.auth import (
     get_current_cashier_or_above, get_current_kitchen_or_above,
     assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Restaurant, Customer, User, UserRole, Category
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Restaurant, Customer, User, UserRole, Category, FulfillmentMethod, Driver
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
@@ -73,6 +73,7 @@ class OrderSchema(BaseModel):
 
 class StatusUpdateBody(BaseModel):
     new_status: OrderStatus
+    driver_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +195,44 @@ async def update_order_status(
             detail=f"Order status changed to {body.new_status.value} (previously: {order.status.value})"
         )
 
+        # Generate delivery PIN if accepting a delivery order
+        if body.new_status == OrderStatus.ACCEPTED and order.fulfillment_method == FulfillmentMethod.DELIVERY and not order.delivery_pin:
+            order.delivery_pin = await OrderService.generate_delivery_pin(db)
+
+        # Handle driver dispatch logic
+        if body.new_status == OrderStatus.DISPATCHED:
+            restaurant = order.restaurant
+            if body.driver_id:
+                # Direct Assignment
+                driver_res = await db.execute(select(Driver).where(Driver.id == body.driver_id))
+                driver = driver_res.scalar_one_or_none()
+                if not driver or driver.restaurant_id != order.restaurant_id:
+                    raise HTTPException(status_code=400, detail="Invalid driver")
+                order.driver_id = body.driver_id
+                
+                if restaurant and restaurant.api_token and restaurant.phone_number_id:
+                    background_tasks.add_task(
+                        OrderService.notify_driver_dispatch_background,
+                        restaurant_token=restaurant.api_token,
+                        restaurant_phone_id=restaurant.phone_number_id,
+                        driver_wa_id=driver.wa_id,
+                        order_id=order.id,
+                        latitude=order.latitude or 0.0,
+                        longitude=order.longitude or 0.0
+                    )
+            else:
+                # Broadcast
+                order.driver_id = None
+                if restaurant and restaurant.api_token and restaurant.phone_number_id:
+                    background_tasks.add_task(
+                        OrderService.notify_drivers_broadcast_background,
+                        db=None,
+                        restaurant_token=restaurant.api_token,
+                        restaurant_phone_id=restaurant.phone_number_id,
+                        restaurant_id=restaurant.id,
+                        order_id=order.id
+                    )
+        
         # Update order status
         order.status = body.new_status
         await db.commit()
@@ -219,7 +258,8 @@ async def update_order_status(
                 customer_wa_id=order.customer_wa_id,
                 customer_lang=customer_lang,
                 order_id=order.id,
-                status=new_status_val
+                status=new_status_val,
+                delivery_pin=order.delivery_pin
             )
 
         return {"status": "updated", "new_status": new_status_val}
