@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from app.core.database import engine
 from app.core.config import settings
 from app.models import Base
-from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth
+from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth, beta
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
@@ -89,6 +89,9 @@ app.include_router(drivers.router, prefix="/api/v1/admin/drivers")
 
 # 7. Authentication
 app.include_router(auth.router, prefix="/api/v1/auth")
+
+# 8. Public Beta Signup (No auth required)
+app.include_router(beta.router, prefix="/api/v1/public")
 
 @app.get("/")
 def home():

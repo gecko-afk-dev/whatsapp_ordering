@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="$locale" dir="$dir">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to GEQO</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f5;
+            color: #18181b;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #0f0f13;
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #00c853;
+        }
+        .content {
+            padding: 30px 20px;
+            text-align: $align;
+        }
+        .content p {
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .next-steps {
+            background-color: #f8fafc;
+            padding: 20px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+        .next-steps ol {
+            margin: 0;
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+        .next-steps li {
+            margin-bottom: 10px;
+        }
+        .footer {
+            background-color: #f4f4f5;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #71717a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>GEQO</h1>
+        </div>
+        <div class="content">
+            <p>$greeting</p>
+            <p>$body_1</p>
+            <div class="next-steps">
+                <strong>$next_steps_title</strong>
+                <ol>
+                    <li>$step_1</li>
+                    <li>$step_2</li>
+                    <li>$step_3</li>
+                </ol>
+            </div>
+            <p>$sign_off</p>
+        </div>
+        <div class="footer">
+            &copy; 2026 GEQO. $rights_reserved
+        </div>
+    </div>
+</body>
+</html>

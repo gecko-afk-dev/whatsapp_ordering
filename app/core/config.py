@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALLOWED_ORIGINS: str = "*"
 
+    # SMTP Configuration (Lark Suite)
+    SMTP_HOST: str = "smtp.larksuite.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: str
+    SMTP_PASSWORD: str
+    SMTP_SENDER_NAME: str = "GEQO"
+    ADMIN_NOTIFICATION_EMAIL: str = "admin@geqo.com"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 # Create one "settings" object to be used everywhere

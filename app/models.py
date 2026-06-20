@@ -40,6 +40,11 @@ class PaymentStatus(PyEnum):
     OVERDUE = "overdue"
     SUSPENDED = "suspended"
 
+class BetaCardStatus(PyEnum):
+    AVAILABLE = "available"    # Printed, not yet scanned
+    CLAIMED = "claimed"        # Form submitted successfully
+    EXPIRED = "expired"        # Manually expired by admin
+
 # --- Tables ---
 
 class User(Base):
@@ -268,3 +273,25 @@ class AuditLog(Base):
     target: Mapped[Optional[str]] = mapped_column(String(100))    # e.g. order_id=42
     detail: Mapped[Optional[str]] = mapped_column(Text)            # human-readable summary
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+class BetaCard(Base):
+    __tablename__ = "beta_cards"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    status: Mapped[BetaCardStatus] = mapped_column(Enum(BetaCardStatus), default=BetaCardStatus.AVAILABLE)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    signup: Mapped[Optional["BetaSignup"]] = relationship(back_populates="card")
+
+class BetaSignup(Base):
+    __tablename__ = "beta_signups"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(ForeignKey("beta_cards.id"), unique=True)
+    manager_name: Mapped[str] = mapped_column(String(150))
+    restaurant_name: Mapped[str] = mapped_column(String(150))
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    whatsapp_number: Mapped[str] = mapped_column(String(20))
+    locale: Mapped[str] = mapped_column(String(5), default="fr")  # en, fr, ar
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    confirmation_sent: Mapped[bool] = mapped_column(default=False)
+    card: Mapped["BetaCard"] = relationship(back_populates="signup")
