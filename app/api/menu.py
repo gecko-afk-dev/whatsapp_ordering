@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import Optional
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_manager_or_admin, User, UserRole
 from app.models import Category, MenuItem, ModifierGroup, ModifierOption

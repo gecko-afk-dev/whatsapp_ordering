@@ -1,7 +1,6 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 import secrets
 
@@ -68,7 +67,6 @@ async def setup_password(request: ResetPasswordRequest):
 class ForceChangeRequest(BaseModel):
     new_password: str
 
-from fastapi import Depends
 @router.post("/force-change-password")
 async def force_change_password(request: ForceChangeRequest, current_user: User = Depends(get_current_user)):
     async with AsyncSessionLocal() as db:

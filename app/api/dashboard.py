@@ -8,11 +8,10 @@ from datetime import datetime
 from jose import JWTError, jwt
 from app.core.database import AsyncSessionLocal
 from app.core.auth import (
-    SECRET_KEY, ALGORITHM, get_current_restaurant_owner,
-    get_current_cashier_or_above, get_current_kitchen_or_above,
+    SECRET_KEY, ALGORITHM, get_current_cashier_or_above, get_current_kitchen_or_above,
     assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Restaurant, Customer, User, UserRole, Category, FulfillmentMethod, Driver
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager

@@ -377,7 +377,7 @@ async def handle_events(request: Request):
                     elif btn_id.startswith("mgr_dispatch_"):
                         order_id = int(btn_id.split("_")[2])
                         from app.models import Driver
-                        drivers_req = await db.execute(select(Driver).where(Driver.restaurant_id == restaurant.id, Driver.is_active == True))
+                        drivers_req = await db.execute(select(Driver).where(Driver.restaurant_id == restaurant.id, Driver.is_active))
                         drivers = drivers_req.scalars().all()
                         
                         if not drivers:
@@ -422,7 +422,7 @@ async def handle_events(request: Request):
                     elif btn_id.startswith("claim_order_"):
                         order_id = int(btn_id.split("_")[2])
                         from app.models import Driver
-                        driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active == True))
+                        driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active))
                         driver = driver_req.scalar_one_or_none()
                         if driver:
                             order_req = await db.execute(select(Order).where(Order.id == order_id))

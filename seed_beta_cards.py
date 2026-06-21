@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import csv
-import os
 import secrets
 import string
 from datetime import datetime
@@ -12,8 +11,8 @@ from dotenv import load_dotenv
 # Load env before importing models to ensure DB URL is present
 load_dotenv()
 
-from app.models import BetaCard, BetaCardStatus
-from app.core.config import settings
+from app.models import BetaCard, BetaCardStatus  # noqa: E402
+from app.core.config import settings  # noqa: E402
 
 def generate_card_code() -> str:
     # GEQO-XXXXXX (6 uppercase alphanumeric)

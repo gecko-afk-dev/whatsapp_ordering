@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_manager_or_admin, User, UserRole
-from app.models import Driver, Restaurant
+from app.models import Driver
 
 router = APIRouter()
 

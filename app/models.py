@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum as PyEnum
 from typing import List, Optional
-from sqlalchemy import ForeignKey, String, DateTime, Float, Boolean, Text, Enum
+from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):

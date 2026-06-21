@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr
-import json
 
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
@@ -13,7 +12,7 @@ from app.services.email import EmailService
 import secrets
 from app.models import (
     Restaurant, RestaurantStatus, PaymentStatus, Order, OrderStatus,
-    DailyAnalytics, User as UserModel, UserRole, MenuItem, AuditLog
+    User as UserModel, UserRole, MenuItem, AuditLog
 )
 
 router = APIRouter()

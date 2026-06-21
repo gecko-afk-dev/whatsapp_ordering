@@ -146,9 +146,9 @@ class WhatsAppService:
 
     async def send_cart_summary(self, to_phone: str, lang: str, cart_items: list, total: str):
         summary_dict = {
-            "fr": f"Votre panier:\n" + "\n".join([f"- {item['quantity']}x {item['name']} ({item['subtotal']})" for item in cart_items]) + f"\n\nTotal: {total}",
-            "ar": f"سلتك:\n" + "\n".join([f"- {item['quantity']}x {item['name']} ({item['subtotal']})" for item in cart_items]) + f"\n\nالمجموع: {total}",
-            "en": f"Your cart:\n" + "\n".join([f"- {item['quantity']}x {item['name']} ({item['subtotal']})" for item in cart_items]) + f"\n\nTotal: {total}",
+            "fr": "Votre panier:\n" + "\n".join([f"- {item['quantity']}x {item['name']} ({item['subtotal']})" for item in cart_items]) + f"\n\nTotal: {total}",
+            "ar": "سلتك:\n" + "\n".join([f"- {item['quantity']}x {item['name']} ({item['subtotal']})" for item in cart_items]) + f"\n\nالمجموع: {total}",
+            "en": "Your cart:\n" + "\n".join([f"- {item['quantity']}x {item['name']} ({item['subtotal']})" for item in cart_items]) + f"\n\nTotal: {total}",
         }
         summary_text = summary_dict.get(lang, summary_dict["fr"])
 

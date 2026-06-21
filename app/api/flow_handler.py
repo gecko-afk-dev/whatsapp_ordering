@@ -1,10 +1,10 @@
-import json
 import logging
 from typing import Optional
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy import delete
 import os
+import json
 import base64
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
@@ -12,13 +12,12 @@ from app.core.database import AsyncSessionLocal
 from app.models import (
     Category, MenuItem, Customer, Restaurant,
     Cart, CartItem, CartItemExclusion, CartItemModifier,
-    ModifierGroup, ModifierOption
+    ModifierGroup, Order, OrderStatus, Driver
 )
-from app.services.order_service import OrderService
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
+from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 logger = logging.getLogger(__name__)
@@ -43,6 +42,44 @@ def load_private_key():
     
     with open(private_key_path, "rb") as f:
         return serialization.load_pem_private_key(f.read(), password=None)
+
+def decrypt_request(encrypted_aes_key_b64, encrypted_flow_data_b64, initial_vector_b64):
+    """Decrypt Meta's encrypted request payload."""
+    private_key = load_private_key()
+
+    encrypted_aes_key = base64.b64decode(encrypted_aes_key_b64)
+    encrypted_flow_data = base64.b64decode(encrypted_flow_data_b64)
+    initial_vector = base64.b64decode(initial_vector_b64)
+
+    aes_key = private_key.decrypt(
+        encrypted_aes_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
+
+    encrypted_body = encrypted_flow_data[:-16]
+    auth_tag = encrypted_flow_data[-16:]
+
+    cipher = Cipher(algorithms.AES(aes_key), modes.GCM(initial_vector, auth_tag))
+    decryptor = cipher.decryptor()
+    decrypted_data = decryptor.update(encrypted_body) + decryptor.finalize()
+    payload = json.loads(decrypted_data.decode("utf-8"))
+
+    return payload, aes_key, initial_vector
+
+def encrypt_response(response_data, aes_key, initial_vector):
+    """Encrypt response payload for Meta (IV must be flipped)."""
+    flipped_iv = bytes(b ^ 0xFF for b in initial_vector)
+    response_json = json.dumps(response_data).encode("utf-8")
+
+    cipher = Cipher(algorithms.AES(aes_key), modes.GCM(flipped_iv))
+    encryptor = cipher.encryptor()
+    encrypted_data = encryptor.update(response_json) + encryptor.finalize()
+
+    return base64.b64encode(encrypted_data + encryptor.tag).decode("utf-8")
 
 # ---------------------------------------------------------------------------
 # Token helpers
@@ -277,8 +314,7 @@ async def process_flow_request(payload: dict):
                     }
                 
                 # Verify Driver
-                from app.models import Driver
-                driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active == True))
+                driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active))
                 driver = driver_req.scalar_one_or_none()
                 if not driver or driver.id != order.driver_id:
                     return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
@@ -359,7 +395,7 @@ async def process_flow_request(payload: dict):
             item_query = await db.execute(
                 select(MenuItem).where(
                     MenuItem.category_id == cat_id,
-                    MenuItem.is_available == True,
+                    MenuItem.is_available,
                 ).options(joinedload(MenuItem.modifier_groups).joinedload(ModifierGroup.options))
             )
             items = item_query.scalars().all()

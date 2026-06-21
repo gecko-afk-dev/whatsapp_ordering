@@ -1,4 +1,3 @@
-import json
 import secrets
 import string
 from sqlalchemy.future import select
@@ -175,7 +174,7 @@ class OrderService:
         
         async with AsyncSessionLocal() as session:
             res = await session.execute(
-                select(Driver).where(Driver.restaurant_id == restaurant_id, Driver.is_active == True)
+                select(Driver).where(Driver.restaurant_id == restaurant_id, Driver.is_active)
             )
             drivers = res.scalars().all()
             
