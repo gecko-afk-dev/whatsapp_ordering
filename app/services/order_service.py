@@ -2,7 +2,7 @@ import secrets
 import string
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod, OrderItemModifier, ModifierOption, Driver
+from app.models import Category, ModifierGroup, Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod, OrderItemModifier, ModifierOption, Driver
 
 class OrderService:
     @staticmethod
@@ -60,7 +60,11 @@ class OrderService:
                 raise ValueError("Item quantity must be at least 1.")
 
             # Fetch the item from DB to get the official price (prevents price hacking)
-            res = await db.execute(select(MenuItem).where(MenuItem.id == item_id))
+            res = await db.execute(
+                select(MenuItem)
+                .join(Category)
+                .where(MenuItem.id == item_id, Category.restaurant_id == restaurant_id)
+            )
             item = res.scalar_one_or_none()
 
             if not item or not item.is_available:
@@ -92,17 +96,25 @@ class OrderService:
             # Handle modifiers
             modifiers = selection.get("modifiers", [])
             for mod_id in modifiers:
-                # Add price of modifier
-                mod_res = await db.execute(select(ModifierOption).where(ModifierOption.id == mod_id))
+                # Add price of modifier and ensure it belongs to this restaurant
+                mod_res = await db.execute(
+                    select(ModifierOption)
+                    .join(ModifierOption.group)
+                    .join(ModifierGroup.menu_item)
+                    .join(MenuItem.category)
+                    .where(ModifierOption.id == mod_id, Category.restaurant_id == restaurant_id)
+                )
                 mod_option = mod_res.scalar_one_or_none()
-                if mod_option:
-                    order_line.unit_price += mod_option.price_override
-                    total_price += (mod_option.price_override * qty)
-                    mod_entry = OrderItemModifier(
-                        order_item_id=order_line.id,
-                        modifier_option_id=mod_id
-                    )
-                    db.add(mod_entry)
+                if not mod_option:
+                    raise ValueError(f"Modifier option {mod_id} is invalid for this restaurant.")
+
+                order_line.unit_price += mod_option.price_override
+                total_price += (mod_option.price_override * qty)
+                mod_entry = OrderItemModifier(
+                    order_item_id=order_line.id,
+                    modifier_option_id=mod_id
+                )
+                db.add(mod_entry)
 
         if valid_item_count == 0:
             raise ValueError("At least one available item must be selected.")

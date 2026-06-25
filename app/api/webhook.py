@@ -16,7 +16,19 @@ from app.services.order_service import OrderService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- In-Memory Rate Limiter ---
+# --- Rate Limiter (In-Memory) ---
+# TODO: Migrate to Redis in-memory cache to support multi-instance deployments.
+# Current implementation uses in-memory dict which does NOT scale across workers.
+# For production, integrate: pip install aioredis
+# Usage pattern:
+#   redis_client = aioredis.from_url(settings.REDIS_URL)
+#   key = f"rate_limit:{user_id}"
+#   count = await redis_client.incr(key)
+#   if count == 1:
+#       await redis_client.expire(key, RATE_LIMIT_SECONDS)
+#   if count > MAX_REQUESTS:
+#       raise HTTPException(429, "Rate limit exceeded")
+
 USER_RATE_LIMITS = {}
 RATE_LIMIT_SECONDS = 1.0
 MAX_RATE_LIMIT_ENTRIES = 20000

@@ -30,9 +30,11 @@ logger.handlers = [handler]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all tables on startup if they don't exist
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # NOTE: Database schema creation disabled. Use Alembic migrations instead.
+    # To apply pending migrations, run: alembic upgrade head
+    # Uncomment the line below only for development if no migrations are available:
+    # async with engine.begin() as conn:
+    #     await conn.run_sync(Base.metadata.create_all)
     yield
 
 
@@ -46,18 +48,23 @@ async def global_exception_handler(request, exc):
         content={"detail": "Internal Server Error"},
     )
 
-# CORS for Frontend
-origins = settings.ALLOWED_ORIGINS.split(",")
-allow_credentials = True
+# CORS for Frontend — only allow explicit origins, reject wildcards
+origins = []
+if settings.ALLOWED_ORIGINS and settings.ALLOWED_ORIGINS.strip():
+    origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+# Reject wildcard origins in production-like setups
 if "*" in origins:
-    allow_credentials = False
+    logger.warning("WARNING: Wildcard CORS origin detected. This is insecure in production.")
+
+allow_credentials = len(origins) > 0 and "*" not in origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins if origins else ["http://localhost:3000"],  # Safe fallback
     allow_credentials=allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 @app.middleware("http")

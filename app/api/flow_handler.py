@@ -122,8 +122,17 @@ async def get_or_create_cart(db, wa_id: str, restaurant_id: int):
     return cart
 
 
-async def add_item_to_cart(db, cart: Cart, menu_item_id: int, quantity: int, modifier_option_ids: list[int] = None, exclusions: list[str] = None):
-    """Add or update an item in the cart with modifiers and exclusions."""
+async def add_item_to_cart(db, cart: Cart, restaurant_id: int, menu_item_id: int, quantity: int, modifier_option_ids: list[int] = None, exclusions: list[str] = None):
+    """Add or update an item in the cart with modifiers and exclusions, validating restaurant ownership."""
+    item_query = await db.execute(
+        select(MenuItem)
+        .join(Category)
+        .where(MenuItem.id == menu_item_id, Category.restaurant_id == restaurant_id)
+    )
+    menu_item = item_query.scalar_one_or_none()
+    if not menu_item or not menu_item.is_available:
+        raise ValueError("Menu item is not available for this restaurant.")
+
     # Check if item already in cart
     item_query = await db.execute(
         select(CartItem).where(CartItem.cart_id == cart.id, CartItem.menu_item_id == menu_item_id)
@@ -136,6 +145,29 @@ async def add_item_to_cart(db, cart: Cart, menu_item_id: int, quantity: int, mod
         cart_item = CartItem(cart_id=cart.id, menu_item_id=menu_item_id, quantity=quantity)
         db.add(cart_item)
         await db.flush()
+
+    # Handle modifiers attached to this cart item
+    if modifier_option_ids:
+        for mod_id in modifier_option_ids:
+            mod = await db.execute(
+                select(ModifierOption)
+                .join(ModifierOption.group)
+                .join(ModifierGroup.menu_item)
+                .join(MenuItem.category)
+                .where(ModifierOption.id == mod_id, Category.restaurant_id == restaurant_id)
+            )
+            mod_option = mod.scalar_one_or_none()
+            if not mod_option:
+                raise ValueError(f"Modifier option {mod_id} is invalid for this restaurant.")
+            db.add(CartItemModifier(cart_item_id=cart_item.id, modifier_option_id=mod_id))
+
+    # Handle exclusions
+    if exclusions:
+        for exc in exclusions:
+            exclusion = CartItemExclusion(cart_item_id=cart_item.id, ingredient_name=exc)
+            db.add(exclusion)
+
+    await db.commit()
 
     # Handle modifiers
     if modifier_option_ids:
@@ -393,10 +425,14 @@ async def process_flow_request(payload: dict):
         if action == "data_exchange" and screen == "CATEGORIES_SCREEN":
             cat_id = int(data.get("category_id", 0))
             item_query = await db.execute(
-                select(MenuItem).where(
+                select(MenuItem)
+                .join(Category)
+                .where(
                     MenuItem.category_id == cat_id,
+                    Category.restaurant_id == restaurant_id,
                     MenuItem.is_available,
-                ).options(joinedload(MenuItem.modifier_groups).joinedload(ModifierGroup.options))
+                )
+                .options(joinedload(MenuItem.modifier_groups).joinedload(ModifierGroup.options))
             )
             items = item_query.scalars().all()
             return {
@@ -439,7 +475,7 @@ async def process_flow_request(payload: dict):
             exclusions = data.get("exclusions", [])
             modifiers = data.get("modifiers", []) # Expecting list of option IDs
 
-            await add_item_to_cart(db, cart, item_id, qty, modifiers, exclusions)
+            await add_item_to_cart(db, cart, restaurant_id, item_id, qty, modifiers, exclusions)
 
             return {
                 "version": "3.0",

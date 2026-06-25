@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Response
+import os
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +25,7 @@ class LoginRequest(BaseModel):
     password: str
 
 class TokenResponse(BaseModel):
-    access_token: str
+    access_token: Optional[str] = None
     token_type: str = "bearer"
     user: dict
 
@@ -75,8 +76,8 @@ class RestaurantAnalytics(BaseModel):
 # --- Authentication ---
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
-    """Login for admins and restaurant owners."""
+async def login(request: LoginRequest, response: Response):
+    """Login for admins and restaurant owners. Sets HTTP-only secure cookie with JWT."""
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(UserModel).where(UserModel.email == request.email)
@@ -98,8 +99,18 @@ async def login(request: LoginRequest):
 
         access_token = create_access_token(data={"sub": user.email})
 
+        # Set HTTP-only, Secure, SameSite cookie
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,  # Only send over HTTPS in production
+            samesite="strict",
+            max_age=30 * 60  # 30 minutes
+        )
+
         return TokenResponse(
-            access_token=access_token,
+            access_token=None,  # Don't return token in body when using cookies
             user={
                 "id": user.id,
                 "email": user.email,
@@ -109,32 +120,60 @@ async def login(request: LoginRequest):
             }
         )
 
+@router.post("/logout")
+async def logout(response: Response):
+    """Logout by clearing the session cookie."""
+    response.delete_cookie(
+        key="access_token",
+        httponly=True,
+        secure=True,
+        samesite="strict"
+    )
+    return {"message": "Logged out successfully"}
+
 @router.post("/setup-admin", response_model=dict)
-async def setup_admin():
-    """First-time admin setup (idempotent, only runs if no admin exists)."""
+async def setup_admin(x_setup_token: Optional[str] = Header(None)):
+    """First-time admin setup (idempotent). Requires `SETUP_BOOTSTRAP_TOKEN` to be set in the environment
+    and the same token provided via the `X-Setup-Token` header. This endpoint is disabled by default
+    when `SETUP_BOOTSTRAP_TOKEN` is not configured.
+    """
+    env_token = os.getenv("SETUP_BOOTSTRAP_TOKEN")
+
+    if not env_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin setup endpoint is disabled in this environment."
+        )
+
+    if not x_setup_token or x_setup_token != env_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing setup token"
+        )
+
     async with AsyncSessionLocal() as db:
         # Check if any admin exists
         result = await db.execute(select(UserModel).where(UserModel.role == UserRole.ADMIN))
         existing_admin = result.scalar_one_or_none()
-        
+
         if existing_admin:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Setup already completed. Admin user already exists."
             )
-            
-        # Create admin user
+
+        # Create admin user with a random password; require password reset on first login
         admin_user = UserModel(
             email="admin@geqo.com",
-            password_hash=get_password_hash("admin123"),
+            password_hash=get_password_hash(secrets.token_urlsafe(32)),
             role=UserRole.ADMIN,
             is_active=True,
             requires_password_change=True
         )
         db.add(admin_user)
         await db.commit()
-        
-        return {"message": "Admin account initialized successfully. Please login immediately."}
+
+        return {"message": "Admin account initialized successfully. Please login and complete setup."}
 
 # --- Admin Routes ---
 

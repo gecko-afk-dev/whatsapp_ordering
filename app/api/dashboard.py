@@ -102,19 +102,28 @@ async def get_user_from_token(token: str) -> Optional[User]:
 async def websocket_endpoint(
     websocket: WebSocket,
     restaurant_id: int,
-    token: str = Query(default=None),
 ):
-    """Live connection for the dashboard. Requires a valid JWT token."""
-    # Reject connection immediately if no token provided
-    if not token:
+    """Live connection for the dashboard. Requires a valid JWT token in the WebSocket subprotocol header."""
+    protocol_header = websocket.headers.get("sec-websocket-protocol")
+    if not protocol_header:
         await websocket.close(code=4001)
         return
+
+    selected_protocols = [proto.strip() for proto in protocol_header.split(",")]
+    bearer_protocol = next((proto for proto in selected_protocols if proto.startswith("bearer.")), None)
+    if not bearer_protocol:
+        await websocket.close(code=4001)
+        return
+
+    token = bearer_protocol[len("bearer."):]
 
     # Validate the token and load the user
     user = await get_user_from_token(token)
     if not user or not user.is_active:
         await websocket.close(code=4001)
         return
+
+    await websocket.accept(subprotocol=bearer_protocol)
 
     # Restaurant-scoped roles can only connect to their own restaurant's feed
     if user.role != UserRole.ADMIN:

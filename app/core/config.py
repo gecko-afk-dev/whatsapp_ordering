@@ -1,4 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     """
@@ -12,7 +15,7 @@ class Settings(BaseSettings):
     WHATSAPP_FLOW_ID: str
     WHATSAPP_APP_SECRET: str
     SECRET_KEY: str
-    ALLOWED_ORIGINS: str = "*"
+    ALLOWED_ORIGINS: str = ""  # Default empty; must be set in production
 
     # SMTP Configuration (Lark Suite)
     SMTP_HOST: str = "smtp.larksuite.com"

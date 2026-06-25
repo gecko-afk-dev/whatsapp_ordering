@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 Standalone script to create admin user.
-Run this locally while the Docker containers are running.
+Requires INITIAL_ADMIN_PASSWORD environment variable.
+
+Usage:
+  export INITIAL_ADMIN_PASSWORD=secure_password_here
+  python create_admin.py
 """
 
 import asyncio
@@ -31,13 +35,20 @@ async def create_admin():
         admin_user = result.scalar_one_or_none()
 
         if admin_user:
-            print("ℹ️ Admin user already exists: admin@geqo.com / admin123")
+            print("ℹ️ Admin user already exists: admin@geqo.com")
+            return
+
+        # Require password via environment variable
+        initial_admin_password = os.getenv("INITIAL_ADMIN_PASSWORD")
+        if not initial_admin_password:
+            print("❌ INITIAL_ADMIN_PASSWORD environment variable is required.")
+            print("   Usage: INITIAL_ADMIN_PASSWORD=<secure-password> python create_admin.py")
             return
 
         # Create initial admin user
         admin_user = User(
             email="admin@geqo.com",
-            password_hash=get_password_hash("admin123"),
+            password_hash=get_password_hash(initial_admin_password),
             role=UserRole.ADMIN,
             is_active=True
         )
@@ -46,7 +57,7 @@ async def create_admin():
 
         print("✅ Admin user created successfully!")
         print("📧 Email: admin@geqo.com")
-        print("🔑 Password: admin123")
+        print("🔑 Password: (set via INITIAL_ADMIN_PASSWORD env var)")
 
 if __name__ == "__main__":
     asyncio.run(create_admin())
