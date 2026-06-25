@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "GEQO_Frontend",
+			"path": "../../Desktop/Frontend Repo/GEQO_Frontend"
+		},
+		{
+			"name": "geqo-marketing-site",
+			"path": "../../GEQO Marketing Page/geqo-marketing-site"
+		}
+	],
+	"settings": {}
+}
