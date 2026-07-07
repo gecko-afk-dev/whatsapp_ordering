@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr
 
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
 from app.services.email import EmailService
 import secrets
@@ -116,7 +117,15 @@ async def login(request: LoginRequest, response: Response):
                 "email": user.email,
                 "role": user.role.value,
                 "restaurant_id": user.restaurant_id,
-                "requires_password_change": user.requires_password_change
+                "requires_password_change": user.requires_password_change,
+                "feature_flags": {
+                    "overview": settings.FEATURE_OVERVIEW_ENABLED,
+                    "orders": True,
+                    "menu": True,
+                    "staff": settings.FEATURE_STAFF_ENABLED,
+                    "drivers": settings.FEATURE_DRIVERS_ENABLED,
+                    "audit_logs": settings.FEATURE_AUDIT_LOGS_ENABLED
+                }
             }
         )
 
@@ -568,6 +577,8 @@ async def write_audit_log(
 @router.get("/staff", response_model=List[StaffResponse])
 async def list_staff(current_user: User = Depends(get_current_restaurant_owner)):
     """List all staff members for the restaurant owner's restaurant."""
+    if not settings.FEATURE_STAFF_ENABLED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff management is currently disabled.")
     if not current_user.restaurant_id:
         raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
     
@@ -589,6 +600,8 @@ async def invite_staff(
     current_user: User = Depends(get_current_restaurant_owner)
 ):
     """Invite a new cashier or kitchen staff member by email."""
+    if not settings.FEATURE_STAFF_ENABLED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff management is currently disabled.")
     if not current_user.restaurant_id:
         raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
 
@@ -643,6 +656,8 @@ async def toggle_staff_status(
     current_user: User = Depends(get_current_restaurant_owner)
 ):
     """Toggle a staff member's active status."""
+    if not settings.FEATURE_STAFF_ENABLED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff management is currently disabled.")
     if not current_user.restaurant_id:
         raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
 
@@ -683,6 +698,8 @@ async def remove_staff(
     current_user: User = Depends(get_current_restaurant_owner)
 ):
     """Permanently delete a staff member from the restaurant."""
+    if not settings.FEATURE_STAFF_ENABLED:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff management is currently disabled.")
     if not current_user.restaurant_id:
         raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
 
@@ -724,6 +741,9 @@ async def get_audit_log(
     """Retrieve audit logs. Owners see their own restaurant's logs; Admins see all logs."""
     if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    
+    if not settings.FEATURE_AUDIT_LOGS_ENABLED and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Audit logs are currently disabled.")
 
     async with AsyncSessionLocal() as db:
         query = select(AuditLog)

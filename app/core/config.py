@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     SMTP_SENDER_NAME: str = "GEQO"
     ADMIN_NOTIFICATION_EMAIL: str = "admin@geqo.com"
 
+    # Feature Flags for incremental release
+    FEATURE_OVERVIEW_ENABLED: bool = False
+    FEATURE_STAFF_ENABLED: bool = False
+    FEATURE_DRIVERS_ENABLED: bool = False
+    FEATURE_AUDIT_LOGS_ENABLED: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 # Create one "settings" object to be used everywhere
