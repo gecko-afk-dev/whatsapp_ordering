@@ -61,10 +61,18 @@ allow_credentials = len(origins) > 0 and "*" not in origins
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if origins else ["http://localhost:3000"],  # Safe fallback
-    allow_credentials=allow_credentials,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "Authorization"],
+    # Hardcoding the origins is safer for your MVP to avoid env parsing errors
+    allow_origins=[
+        "http://localhost:8000",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://app.mygeqo.com",
+        "https://mygeqo.com",
+        "https://www.mygeqo.com"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"], # The "*" allows GET, POST, PUT, DELETE, and the crucial OPTIONS
+    allow_headers=["*"], # The "*" ensures Axios can send tokens without being blocked
 )
 
 @app.middleware("http")
