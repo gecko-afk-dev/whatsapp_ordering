@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, Depends, status
+from fastapi import APIRouter, HTTPException, Request, Depends, status, BackgroundTasks
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -52,12 +52,38 @@ async def check_rate_limit(request: Request):
         rate_limit_cache[client_ip] = (1, current_time + RATE_LIMIT_WINDOW_SECONDS)
 
 
+async def send_signup_emails_task(signup_id: int, manager_name: str, restaurant_name: str, email: str, whatsapp_number: str, card_code: str, locale: str):
+    # Fire confirmation email to user
+    email_success = await EmailService.send_beta_confirmation(
+        email=email,
+        manager_name=manager_name,
+        restaurant_name=restaurant_name,
+        locale=locale
+    )
+    
+    # Fire notification email to admin
+    await EmailService.send_admin_signup_notification(
+        manager_name=manager_name,
+        restaurant_name=restaurant_name,
+        email=email,
+        whatsapp_number=whatsapp_number,
+        card_code=card_code
+    )
+    
+    if email_success:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(BetaSignup).where(BetaSignup.id == signup_id))
+            signup = result.scalar_one_or_none()
+            if signup:
+                signup.confirmation_sent = True
+                await db.commit()
+
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
 @router.post("/beta-signup", status_code=status.HTTP_201_CREATED, dependencies=[Depends(check_rate_limit)])
-async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)):
+async def beta_signup(req: BetaSignupRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     # Clean input strings
     req.manager_name = req.manager_name.strip()
     req.restaurant_name = req.restaurant_name.strip()
@@ -94,29 +120,21 @@ async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)
     card.status = BetaCardStatus.CLAIMED
     card.claimed_at = datetime.utcnow()
     
-    # 6 & 7. Send Emails (we commit first to ensure we don't send emails if DB fails)
+    # 6. Save changes to DB first so signup is immediately recorded
     await db.commit()
+    await db.refresh(new_signup)
     
-    # Fire confirmation email to user
-    email_success = await EmailService.send_beta_confirmation(
-        email=req.email,
-        manager_name=req.manager_name,
-        restaurant_name=req.restaurant_name,
-        locale=req.locale
-    )
-    
-    # Fire notification email to admin
-    await EmailService.send_admin_signup_notification(
+    # 7. Offload email dispatch to BackgroundTasks so the API returns instantly
+    # and doesn't get blocked by slow SMTP connection / timeouts.
+    background_tasks.add_task(
+        send_signup_emails_task,
+        signup_id=new_signup.id,
         manager_name=req.manager_name,
         restaurant_name=req.restaurant_name,
         email=req.email,
         whatsapp_number=req.whatsapp_number,
-        card_code=req.card_code
+        card_code=req.card_code,
+        locale=req.locale
     )
-    
-    # If user email sent successfully, update tracking flag
-    if email_success:
-        new_signup.confirmation_sent = True
-        await db.commit()
         
     return {"message": "Signup successful"}
