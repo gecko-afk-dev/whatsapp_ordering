@@ -26,7 +26,18 @@ RATE_LIMIT_MAX_REQUESTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 60
 
 async def check_rate_limit(request: Request):
-    client_ip = request.client.host if request.client else "unknown"
+    # Retrieve the real client IP by checking proxy headers first.
+    # Cloudflare adds 'cf-connecting-ip', and reverse proxies add 'x-forwarded-for'.
+    client_ip = request.headers.get("cf-connecting-ip")
+    if not client_ip:
+        x_forwarded_for = request.headers.get("x-forwarded-for")
+        if x_forwarded_for:
+            # X-Forwarded-For can contain multiple IPs; the first one is the client.
+            client_ip = x_forwarded_for.split(",")[0].strip()
+            
+    if not client_ip:
+        client_ip = request.client.host if request.client else "unknown"
+        
     current_time = time.time()
     
     if client_ip in rate_limit_cache:
@@ -39,6 +50,7 @@ async def check_rate_limit(request: Request):
             rate_limit_cache[client_ip] = (count + 1, reset_time)
     else:
         rate_limit_cache[client_ip] = (1, current_time + RATE_LIMIT_WINDOW_SECONDS)
+
 
 async def get_db():
     async with AsyncSessionLocal() as session:
