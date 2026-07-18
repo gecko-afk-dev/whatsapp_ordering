@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import Dict, Tuple
 from datetime import datetime
+import os
 import time
 
 from app.core.database import AsyncSessionLocal
@@ -22,10 +23,14 @@ class BetaSignupRequest(BaseModel):
 
 # Simple in-memory rate limiter: IP -> (count, reset_time)
 rate_limit_cache: Dict[str, Tuple[int, float]] = {}
-RATE_LIMIT_MAX_REQUESTS = 5
-RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_ENABLED = os.getenv("BETA_SIGNUP_RATE_LIMIT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("BETA_SIGNUP_RATE_LIMIT_MAX_REQUESTS", "20"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("BETA_SIGNUP_RATE_LIMIT_WINDOW_SECONDS", "300"))
 
 async def check_rate_limit(request: Request):
+    if not RATE_LIMIT_ENABLED:
+        return
+
     # Retrieve the real client IP by checking proxy headers first.
     # Cloudflare adds 'cf-connecting-ip', and reverse proxies add 'x-forwarded-for'.
     client_ip = request.headers.get("cf-connecting-ip")

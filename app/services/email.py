@@ -40,6 +40,25 @@ class EmailService:
         )
 
     @staticmethod
+    async def _send_email_with_retries(to_email: str, subject: str, text_content: str, html_content: str = None, retries: int = 3, delay_seconds: float = 1.0):
+        """Retry transient email failures a few times before giving up."""
+        last_error = None
+        for attempt in range(retries):
+            try:
+                return await EmailService._send_email_async(to_email, subject, text_content, html_content)
+            except Exception as exc:
+                last_error = exc
+                if attempt == retries - 1:
+                    logger.error("Email send failed after %s attempts for %s: %s", retries, to_email, exc)
+                    return False
+                logger.warning("Email send attempt %s/%s failed for %s: %s", attempt + 1, retries, to_email, exc)
+                await asyncio.sleep(delay_seconds)
+
+        if last_error is not None:
+            logger.error("Email send failed for %s: %s", to_email, last_error)
+        return False
+
+    @staticmethod
     async def send_beta_confirmation(email: str, manager_name: str, restaurant_name: str, locale: str = "fr"):
         """Sends branded confirmation email for beta signup."""
         # Load the HTML template (we will create this template in the next workstream)
@@ -112,7 +131,7 @@ class EmailService:
             f"We will be in touch shortly for the onboarding call."
         )
 
-        return await EmailService._send_email_async(email, subject, text_content, html_content)
+        return await EmailService._send_email_with_retries(email, subject, text_content, html_content)
 
     @staticmethod
     async def send_admin_signup_notification(manager_name: str, restaurant_name: str, email: str, whatsapp_number: str, card_code: str):
@@ -136,7 +155,7 @@ class EmailService:
         html_content = Template(html_template).safe_substitute(params)
         text_content = f"New Signup:\nRestaurant: {restaurant_name}\nManager: {manager_name}\nEmail: {email}\nWhatsApp: {whatsapp_number}\nCard: {card_code}"
 
-        return await EmailService._send_email_async(settings.ADMIN_NOTIFICATION_EMAIL, subject, text_content, html_content)
+        return await EmailService._send_email_with_retries(settings.ADMIN_NOTIFICATION_EMAIL, subject, text_content, html_content)
 
     @staticmethod
     async def send_invite_email(email: str, setup_token: str):
@@ -144,7 +163,7 @@ class EmailService:
         subject = "Set up your GEQO Manager Account"
         text_content = f"Click here to set your password: {setup_link}"
         html_content = f"<p>Click <a href='{setup_link}'>here</a> to set your password.</p>"
-        return await EmailService._send_email_async(email, subject, text_content, html_content)
+        return await EmailService._send_email_with_retries(email, subject, text_content, html_content)
 
     @staticmethod
     async def send_staff_invite_email(email: str, role: str, setup_token: str):
@@ -153,7 +172,7 @@ class EmailService:
         subject = f"You've been invited to GEQO as {role_display}"
         text_content = f"Click here to activate your {role_display} account: {setup_link}"
         html_content = f"<p>Click <a href='{setup_link}'>here</a> to activate your {role_display} account.</p>"
-        return await EmailService._send_email_async(email, subject, text_content, html_content)
+        return await EmailService._send_email_with_retries(email, subject, text_content, html_content)
 
     @staticmethod
     async def send_password_reset_email(email: str, reset_token: str):
@@ -161,4 +180,4 @@ class EmailService:
         subject = "Reset Your Password"
         text_content = f"Click here to reset your password: {reset_link}"
         html_content = f"<p>Click <a href='{reset_link}'>here</a> to reset your password.</p>"
-        return await EmailService._send_email_async(email, subject, text_content, html_content)
+        return await EmailService._send_email_with_retries(email, subject, text_content, html_content)
