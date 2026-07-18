@@ -23,7 +23,11 @@ class EmailService:
             msg.attach(MIMEText(html_content, "html"))
 
         try:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5.0) as server:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5.0) as server:
+                server.ehlo()
+                if server.has_extn('starttls'):
+                    server.starttls()
+                    server.ehlo()
                 server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 server.sendmail(settings.SMTP_USER, to_email, msg.as_string())
             logger.info(f"Successfully sent email to {to_email}")
