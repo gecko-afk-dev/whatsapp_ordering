@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import logging
 
@@ -17,12 +19,16 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALLOWED_ORIGINS: str = ""  # Default empty; must be set in production
 
-    # SMTP Configuration (Lark Suite)
+    # SMTP Configuration (kept for compatibility, but unused by Resend)
     SMTP_HOST: str = "smtp.larksuite.com"
     SMTP_PORT: int = 465
     SMTP_USER: str
     SMTP_PASSWORD: str
     SMTP_SENDER_NAME: str = "GEQO"
+
+    # Resend Configuration
+    RESEND_API_KEY: Optional[str] = None
+    RESEND_FROM_EMAIL: Optional[str] = None
     ADMIN_NOTIFICATION_EMAIL: str = "admin@geqo.com"
 
     # Feature Flags for incremental release
