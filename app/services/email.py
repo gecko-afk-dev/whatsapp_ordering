@@ -12,11 +12,19 @@ logger = logging.getLogger(__name__)
 class EmailService:
     @staticmethod
     def _get_sender_address() -> str:
+        if not settings.RESEND_FROM_EMAIL:
+            return "onboarding@mygeqo.com"
+
+        value = settings.RESEND_FROM_EMAIL.strip()
+        if "<" in value and ">" in value:
+            return value.split("<", 1)[1].split(">", 1)[0].strip()
+        return value
+
+    @staticmethod
+    def _get_from_header() -> str:
         if settings.RESEND_FROM_EMAIL:
-            return settings.RESEND_FROM_EMAIL
-        if settings.SMTP_USER:
-            return settings.SMTP_USER
-        return "onboarding@mygeqo.com"
+            return settings.RESEND_FROM_EMAIL.strip()
+        return "GEQO <onboarding@mygeqo.com>"
 
     @staticmethod
     def _get_resend_headers() -> dict:
@@ -36,7 +44,7 @@ class EmailService:
             return False
 
         payload = {
-            "from": f"{settings.SMTP_SENDER_NAME} <{EmailService._get_sender_address()}>",
+            "from": EmailService._get_from_header(),
             "to": [to_email],
             "subject": subject,
             "text": text_content,
