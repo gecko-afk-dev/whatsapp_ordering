@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Request, Depends, status, BackgroundTasks
+import logging
+from fastapi import APIRouter, HTTPException, Request, Depends, status
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -12,6 +13,7 @@ from app.models import BetaCard, BetaSignup, BetaCardStatus
 from app.services.email import EmailService
 
 router = APIRouter(tags=["Beta Signup"])
+logger = logging.getLogger(__name__)
 
 class BetaSignupRequest(BaseModel):
     manager_name: str = Field(..., min_length=2, max_length=150)
@@ -88,7 +90,7 @@ async def get_db():
         yield session
 
 @router.post("/beta-signup", status_code=status.HTTP_201_CREATED, dependencies=[Depends(check_rate_limit)])
-async def beta_signup(req: BetaSignupRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)):
     # Clean input strings
     req.manager_name = req.manager_name.strip()
     req.restaurant_name = req.restaurant_name.strip()
@@ -129,17 +131,19 @@ async def beta_signup(req: BetaSignupRequest, background_tasks: BackgroundTasks,
     await db.commit()
     await db.refresh(new_signup)
     
-    # 7. Offload email dispatch to BackgroundTasks so the API returns instantly
-    # and doesn't get blocked by slow SMTP connection / timeouts.
-    background_tasks.add_task(
-        send_signup_emails_task,
-        signup_id=new_signup.id,
-        manager_name=req.manager_name,
-        restaurant_name=req.restaurant_name,
-        email=req.email,
-        whatsapp_number=req.whatsapp_number,
-        card_code=req.card_code,
-        locale=req.locale
-    )
+    # 7. Send the confirmation emails inline so the signup is not reported as successful
+    # unless the delivery path has actually been attempted.
+    try:
+        await send_signup_emails_task(
+            signup_id=new_signup.id,
+            manager_name=req.manager_name,
+            restaurant_name=req.restaurant_name,
+            email=req.email,
+            whatsapp_number=req.whatsapp_number,
+            card_code=req.card_code,
+            locale=req.locale
+        )
+    except Exception as exc:
+        logger.exception("Beta signup email dispatch failed for %s: %s", req.email, exc)
         
     return {"message": "Signup successful"}
