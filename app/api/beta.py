@@ -69,7 +69,7 @@ async def send_signup_emails_task(signup_id: int, manager_name: str, restaurant_
     )
     
     # Fire notification email to admin
-    await EmailService.send_admin_signup_notification(
+    admin_email_success = await EmailService.send_admin_signup_notification(
         manager_name=manager_name,
         restaurant_name=restaurant_name,
         email=email,
@@ -77,13 +77,16 @@ async def send_signup_emails_task(signup_id: int, manager_name: str, restaurant_
         card_code=card_code
     )
     
-    if email_success:
+    if email_success and admin_email_success:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(BetaSignup).where(BetaSignup.id == signup_id))
             signup = result.scalar_one_or_none()
             if signup:
                 signup.confirmation_sent = True
                 await db.commit()
+        return True
+
+    return False
 
 async def get_db():
     async with AsyncSessionLocal() as session:
@@ -134,7 +137,7 @@ async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)
     # 7. Send the confirmation emails inline so the signup is not reported as successful
     # unless the delivery path has actually been attempted.
     try:
-        await send_signup_emails_task(
+        email_sent = await send_signup_emails_task(
             signup_id=new_signup.id,
             manager_name=req.manager_name,
             restaurant_name=req.restaurant_name,
@@ -145,5 +148,15 @@ async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)
         )
     except Exception as exc:
         logger.exception("Beta signup email dispatch failed for %s: %s", req.email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Signup was created but confirmation email could not be sent"
+        ) from exc
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Signup was created but confirmation email could not be sent"
+        )
         
     return {"message": "Signup successful"}

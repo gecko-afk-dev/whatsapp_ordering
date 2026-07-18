@@ -47,6 +47,7 @@ def test_beta_signup_sends_confirmation_inline(monkeypatch):
 
     async def fake_send_signup_emails_task(**_kwargs):
         called["count"] += 1
+        return True
 
     monkeypatch.setattr(beta, "send_signup_emails_task", fake_send_signup_emails_task)
 
