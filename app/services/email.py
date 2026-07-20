@@ -13,7 +13,7 @@ class EmailService:
     @staticmethod
     def _get_sender_address() -> str:
         if not settings.RESEND_FROM_EMAIL:
-            return "onboarding@mygeqo.com"
+            return "contacts@mygeqo.com"
 
         value = settings.RESEND_FROM_EMAIL.strip()
         if "<" in value and ">" in value:
@@ -24,7 +24,7 @@ class EmailService:
     def _get_from_header() -> str:
         if settings.RESEND_FROM_EMAIL:
             return settings.RESEND_FROM_EMAIL.strip()
-        return "GEQO <onboarding@mygeqo.com>"
+        return "GEQO <contacts@mygeqo.com>"
 
     @staticmethod
     def _get_resend_headers() -> dict:
