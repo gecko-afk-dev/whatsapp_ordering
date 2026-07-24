@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, Request, Depends, status, BackgroundTasks
+import logging
+from fastapi import APIRouter, HTTPException, Request, Depends, status
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import Dict, Tuple
 from datetime import datetime
+import os
 import time
 
 from app.core.database import AsyncSessionLocal
@@ -11,6 +13,7 @@ from app.models import BetaCard, BetaSignup, BetaCardStatus
 from app.services.email import EmailService
 
 router = APIRouter(tags=["Beta Signup"])
+logger = logging.getLogger(__name__)
 
 class BetaSignupRequest(BaseModel):
     manager_name: str = Field(..., min_length=2, max_length=150)
@@ -22,10 +25,14 @@ class BetaSignupRequest(BaseModel):
 
 # Simple in-memory rate limiter: IP -> (count, reset_time)
 rate_limit_cache: Dict[str, Tuple[int, float]] = {}
-RATE_LIMIT_MAX_REQUESTS = 5
-RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_ENABLED = os.getenv("BETA_SIGNUP_RATE_LIMIT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("BETA_SIGNUP_RATE_LIMIT_MAX_REQUESTS", "20"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("BETA_SIGNUP_RATE_LIMIT_WINDOW_SECONDS", "300"))
 
 async def check_rate_limit(request: Request):
+    if not RATE_LIMIT_ENABLED:
+        return
+
     # Retrieve the real client IP by checking proxy headers first.
     # Cloudflare adds 'cf-connecting-ip', and reverse proxies add 'x-forwarded-for'.
     client_ip = request.headers.get("cf-connecting-ip")
@@ -62,7 +69,7 @@ async def send_signup_emails_task(signup_id: int, manager_name: str, restaurant_
     )
     
     # Fire notification email to admin
-    await EmailService.send_admin_signup_notification(
+    admin_email_success = await EmailService.send_admin_signup_notification(
         manager_name=manager_name,
         restaurant_name=restaurant_name,
         email=email,
@@ -70,20 +77,23 @@ async def send_signup_emails_task(signup_id: int, manager_name: str, restaurant_
         card_code=card_code
     )
     
-    if email_success:
+    if email_success and admin_email_success:
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(BetaSignup).where(BetaSignup.id == signup_id))
             signup = result.scalar_one_or_none()
             if signup:
                 signup.confirmation_sent = True
                 await db.commit()
+        return True
+
+    return False
 
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
 @router.post("/beta-signup", status_code=status.HTTP_201_CREATED, dependencies=[Depends(check_rate_limit)])
-async def beta_signup(req: BetaSignupRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)):
     # Clean input strings
     req.manager_name = req.manager_name.strip()
     req.restaurant_name = req.restaurant_name.strip()
@@ -124,17 +134,29 @@ async def beta_signup(req: BetaSignupRequest, background_tasks: BackgroundTasks,
     await db.commit()
     await db.refresh(new_signup)
     
-    # 7. Offload email dispatch to BackgroundTasks so the API returns instantly
-    # and doesn't get blocked by slow SMTP connection / timeouts.
-    background_tasks.add_task(
-        send_signup_emails_task,
-        signup_id=new_signup.id,
-        manager_name=req.manager_name,
-        restaurant_name=req.restaurant_name,
-        email=req.email,
-        whatsapp_number=req.whatsapp_number,
-        card_code=req.card_code,
-        locale=req.locale
-    )
+    # 7. Send the confirmation emails inline so the signup is not reported as successful
+    # unless the delivery path has actually been attempted.
+    try:
+        email_sent = await send_signup_emails_task(
+            signup_id=new_signup.id,
+            manager_name=req.manager_name,
+            restaurant_name=req.restaurant_name,
+            email=req.email,
+            whatsapp_number=req.whatsapp_number,
+            card_code=req.card_code,
+            locale=req.locale
+        )
+    except Exception as exc:
+        logger.exception("Beta signup email dispatch failed for %s: %s", req.email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Signup was created but confirmation email could not be sent"
+        ) from exc
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Signup was created but confirmation email could not be sent"
+        )
         
     return {"message": "Signup successful"}
