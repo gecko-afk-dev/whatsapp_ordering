@@ -294,4 +294,5 @@ class BetaSignup(Base):
     locale: Mapped[str] = mapped_column(String(5), default="fr")  # en, fr, ar
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     confirmation_sent: Mapped[bool] = mapped_column(default=False)
+    provisioned: Mapped[bool] = mapped_column(default=False)
     card: Mapped["BetaCard"] = relationship(back_populates="signup")

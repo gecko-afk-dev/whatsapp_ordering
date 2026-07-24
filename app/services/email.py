@@ -183,7 +183,10 @@ class EmailService:
 
     @staticmethod
     async def send_invite_email(email: str, setup_token: str):
-        setup_link = f"https://app.mygeqo.com/setup?token={setup_token}"
+        # URL format: /?setup_token= (not /setup?token=)
+        # Reason 1: Cloudflare Pages serves the SPA at root — /setup is a 404.
+        # Reason 2: app.js reads urlParams.get('setup_token'), not 'token'.
+        setup_link = f"https://app.mygeqo.com/?setup_token={setup_token}"
         subject = "Set up your GEQO Manager Account"
         text_content = f"Click here to set your password: {setup_link}"
         html_content = f"<p>Click <a href='{setup_link}'>here</a> to set your password.</p>"
@@ -191,7 +194,8 @@ class EmailService:
 
     @staticmethod
     async def send_staff_invite_email(email: str, role: str, setup_token: str):
-        setup_link = f"https://app.mygeqo.com/setup?token={setup_token}"
+        # Same URL fix as send_invite_email — /?setup_token= required for SPA routing.
+        setup_link = f"https://app.mygeqo.com/?setup_token={setup_token}"
         role_display = role.replace("_", " ").title()
         subject = f"You've been invited to GEQO as {role_display}"
         text_content = f"Click here to activate your {role_display} account: {setup_link}"
@@ -200,7 +204,8 @@ class EmailService:
 
     @staticmethod
     async def send_password_reset_email(email: str, reset_token: str):
-        reset_link = f"https://app.mygeqo.com/reset-password?token={reset_token}"
+        # URL format: /?reset_token= matching app.js URLSearchParams check
+        reset_link = f"https://app.mygeqo.com/?reset_token={reset_token}"
         subject = "Reset Your Password"
         text_content = f"Click here to reset your password: {reset_link}"
         html_content = f"<p>Click <a href='{reset_link}'>here</a> to reset your password.</p>"

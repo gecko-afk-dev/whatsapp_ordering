@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Header, Response
 import os
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
@@ -33,7 +33,7 @@ class TokenResponse(BaseModel):
 class RestaurantCreate(BaseModel):
     name: str
     wa_phone_number: str
-    api_token: str
+    api_token: Optional[str] = None  # If omitted, the platform master token is used
     phone_number_id: str
     owner_wa_id: str
     address: Optional[str] = None
@@ -139,6 +139,29 @@ async def logout(response: Response):
         samesite="strict"
     )
     return {"message": "Logged out successfully"}
+
+@router.get("/me", response_model=dict)
+async def get_current_session(current_user: User = Depends(get_current_user)):
+    """
+    Cookie-authenticated session check.
+    Returns the same user dict shape as /login so the frontend
+    can restore auth state on page load without re-entering credentials.
+    """
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "role": current_user.role.value,
+        "restaurant_id": current_user.restaurant_id,
+        "requires_password_change": current_user.requires_password_change,
+        "feature_flags": {
+            "overview": settings.FEATURE_OVERVIEW_ENABLED,
+            "orders": True,
+            "menu": True,
+            "staff": settings.FEATURE_STAFF_ENABLED,
+            "drivers": settings.FEATURE_DRIVERS_ENABLED,
+            "audit_logs": settings.FEATURE_AUDIT_LOGS_ENABLED,
+        }
+    }
 
 @router.post("/setup-admin", response_model=dict)
 async def setup_admin(x_setup_token: Optional[str] = Header(None)):
@@ -317,7 +340,7 @@ async def create_restaurant(
         new_restaurant = Restaurant(
             name=restaurant.name,
             wa_phone_number=restaurant.wa_phone_number,
-            api_token=restaurant.api_token,
+            api_token=restaurant.api_token or settings.WHATSAPP_API_TOKEN,
             phone_number_id=restaurant.phone_number_id,
             owner_wa_id=restaurant.owner_wa_id,
             address=restaurant.address,
@@ -756,3 +779,156 @@ async def get_audit_log(
         res = await db.execute(query)
         logs = res.scalars().all()
         return logs
+
+
+# --- Beta Leads & 1-Click Provisioning ---
+
+class BetaSignupResponse(BaseModel):
+    id: int
+    manager_name: str
+    restaurant_name: str
+    email: str
+    whatsapp_number: str
+    locale: str
+    created_at: datetime
+    card_code: str
+    confirmation_sent: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ProvisionRequest(BaseModel):
+    phone_number_id: str = Field(..., min_length=1)
+    wa_phone_number: str = Field(..., pattern=r"^\+?[0-9]{9,15}$")
+    owner_wa_id: Optional[str] = None
+
+
+@router.get("/beta-signups", response_model=List[BetaSignupResponse])
+async def list_pending_beta_signups(
+    current_user: User = Depends(get_current_admin)
+):
+    """
+    Returns all beta signups that have NOT yet been provisioned into restaurants.
+    Restricted to super-admin only.
+    """
+    async with AsyncSessionLocal() as db:
+        from sqlalchemy.orm import joinedload
+        from app.models import BetaSignup as BetaSignupModel
+
+        result = await db.execute(
+            select(BetaSignupModel)
+            .options(joinedload(BetaSignupModel.card))
+            .where(BetaSignupModel.provisioned == False)
+            .order_by(BetaSignupModel.created_at.desc())
+        )
+        signups = result.scalars().all()
+
+        return [
+            {
+                "id": s.id,
+                "manager_name": s.manager_name,
+                "restaurant_name": s.restaurant_name,
+                "email": s.email,
+                "whatsapp_number": s.whatsapp_number,
+                "locale": s.locale,
+                "created_at": s.created_at,
+                "card_code": s.card.card_code if s.card else "",
+                "confirmation_sent": s.confirmation_sent,
+            }
+            for s in signups
+        ]
+
+
+@router.post("/beta-signups/{signup_id}/provision", response_model=dict)
+async def provision_beta_signup(
+    signup_id: int,
+    payload: ProvisionRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_admin),
+):
+    """
+    1-click provisioning: converts a pending beta signup into a live restaurant
+    with a new owner account and sends the setup invite email.
+    """
+    from sqlalchemy.orm import joinedload
+    from app.models import BetaSignup as BetaSignupModel
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(BetaSignupModel)
+            .options(joinedload(BetaSignupModel.card))
+            .where(BetaSignupModel.id == signup_id)
+        )
+        signup = result.scalar_one_or_none()
+
+        if not signup:
+            raise HTTPException(status_code=404, detail="Beta signup not found")
+        if signup.provisioned:
+            raise HTTPException(status_code=409, detail="This lead has already been provisioned")
+
+        existing_user = await db.execute(
+            select(UserModel).where(UserModel.email == signup.email)
+        )
+        if existing_user.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"A user with email {signup.email} already exists"
+            )
+
+        existing_phone = await db.execute(
+            select(Restaurant).where(Restaurant.wa_phone_number == payload.wa_phone_number)
+        )
+        if existing_phone.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail="This WhatsApp number is already registered to another restaurant"
+            )
+
+        new_restaurant = Restaurant(
+            name=signup.restaurant_name,
+            wa_phone_number=payload.wa_phone_number,
+            api_token=settings.WHATSAPP_API_TOKEN,
+            phone_number_id=payload.phone_number_id,
+            owner_wa_id=payload.owner_wa_id or signup.whatsapp_number,
+            contact_email=signup.email,
+            status=RestaurantStatus.ACTIVE,
+        )
+        db.add(new_restaurant)
+        await db.flush()
+
+        setup_token = secrets.token_urlsafe(32)
+        new_owner = UserModel(
+            email=signup.email,
+            password_hash=get_password_hash(secrets.token_hex(16)),
+            role=UserRole.RESTAURANT_OWNER,
+            restaurant_id=new_restaurant.id,
+            reset_token=setup_token,
+            reset_token_expiry=datetime.utcnow() + timedelta(days=7),
+            requires_password_change=True,
+            is_active=True,
+        )
+        db.add(new_owner)
+
+        signup.provisioned = True
+
+        await db.commit()
+
+        background_tasks.add_task(
+            EmailService.send_invite_email,
+            signup.email,
+            setup_token,
+        )
+
+        await write_audit_log(
+            db=db,
+            user=current_user,
+            action="BETA_SIGNUP_PROVISIONED",
+            target=f"signup_id={signup_id},restaurant_id={new_restaurant.id}",
+            detail=f"Provisioned {signup.restaurant_name} ({signup.email}) from beta lead",
+        )
+
+    return {
+        "message": "Restaurant provisioned successfully. Invite email is on its way.",
+        "restaurant_id": new_restaurant.id,
+    }
