@@ -103,35 +103,54 @@ async def websocket_endpoint(
     websocket: WebSocket,
     restaurant_id: int,
 ):
-    """Live connection for the dashboard. Requires a valid JWT token in the WebSocket subprotocol header."""
-    protocol_header = websocket.headers.get("sec-websocket-protocol")
-    if not protocol_header:
+    """
+    Live KDS feed for the dashboard.
+
+    Auth priority:
+      1. httpOnly cookie `access_token`  — used in production (same-origin or
+         cross-site with SameSite=lax + CORS credentials).
+      2. Sec-WebSocket-Protocol: bearer.{token}  — dev fallback or legacy clients.
+    Both paths validate the same JWT with the same secret.
+    """
+    token: str | None = None
+    selected_subprotocol: str | None = None
+
+    # 1. Try cookie auth first (preferred — no token in JS memory)
+    cookie_token = websocket.cookies.get("access_token")
+    if cookie_token:
+        token = cookie_token
+
+    # 2. Fall back to subprotocol (dev cross-origin or legacy clients)
+    if not token:
+        protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+        protocols = [p.strip() for p in protocol_header.split(",") if p.strip()]
+        bearer_proto = next(
+            (p for p in protocols if p.startswith("bearer.")), None
+        )
+        if bearer_proto:
+            token = bearer_proto[len("bearer."):]
+            selected_subprotocol = bearer_proto
+
+    # 3. Reject if no credential found
+    if not token:
         await websocket.close(code=4001)
         return
 
-    selected_protocols = [proto.strip() for proto in protocol_header.split(",")]
-    bearer_protocol = next((proto for proto in selected_protocols if proto.startswith("bearer.")), None)
-    if not bearer_protocol:
-        await websocket.close(code=4001)
-        return
-
-    token = bearer_protocol[len("bearer."):]
-
-    # Validate the token and load the user
+    # 4. Validate token and load user
     user = await get_user_from_token(token)
     if not user or not user.is_active:
         await websocket.close(code=4001)
         return
 
-    await websocket.accept(subprotocol=bearer_protocol)
+    # Accept — echo subprotocol only when the client sent one (RFC 6455)
+    await websocket.accept(subprotocol=selected_subprotocol)
 
-    # Restaurant-scoped roles can only connect to their own restaurant's feed
+    # 5. Restaurant-scoped access control
     if user.role != UserRole.ADMIN:
         if user.restaurant_id != restaurant_id:
             await websocket.close(code=4003)
             return
 
-    # Admins can connect to any restaurant feed
     await manager.connect(websocket, restaurant_id)
     try:
         while True:

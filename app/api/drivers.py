@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from typing import List
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
-from app.core.auth import get_manager_or_admin, User, UserRole
+from app.core.auth import get_manager_or_admin, get_current_kitchen_or_above, User, UserRole
 from app.models import Driver
 
 router = APIRouter()
@@ -23,12 +23,14 @@ class DriverResponse(BaseModel):
         from_attributes = True
 
 @router.get("/", response_model=List[DriverResponse])
-async def list_drivers(current_user: User = Depends(get_manager_or_admin)):
+async def list_drivers(current_user: User = Depends(get_current_kitchen_or_above)):
+    """
+    Read-only driver list. Available to kitchen_staff and cashier for
+    KDS dispatch UI. Write operations (POST/DELETE) remain owner/admin-only.
+    """
     if not settings.FEATURE_DRIVERS_ENABLED and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Driver management is currently disabled.")
-    if current_user.role != UserRole.RESTAURANT_OWNER and current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not authorized")
-        
+
     async with AsyncSessionLocal() as db:
         res = await db.execute(select(Driver).where(Driver.restaurant_id == current_user.restaurant_id))
         return res.scalars().all()

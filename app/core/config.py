@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     FEATURE_DRIVERS_ENABLED: bool = False
     FEATURE_AUDIT_LOGS_ENABLED: bool = False
 
+    # Cookie security — set COOKIE_SECURE=false in local HTTP dev environments.
+    # Production must always keep COOKIE_SECURE=true.
+    # COOKIE_SAMESITE="lax" is required when the frontend and API are on separate
+    # subdomains (app.mygeqo.com <-> api.mygeqo.com).
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "lax"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -100,13 +100,13 @@ async def login(request: LoginRequest, response: Response):
 
         access_token = create_access_token(data={"sub": user.email})
 
-        # Set HTTP-only, Secure, SameSite cookie
+        # Set HTTP-only cookie — flags are environment-aware via settings
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=True,  # Only send over HTTPS in production
-            samesite="strict",
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
             max_age=30 * 60  # 30 minutes
         )
 
@@ -135,8 +135,8 @@ async def logout(response: Response):
     response.delete_cookie(
         key="access_token",
         httponly=True,
-        secure=True,
-        samesite="strict"
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
     )
     return {"message": "Logged out successfully"}
 
