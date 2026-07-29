@@ -248,11 +248,20 @@ async def flow_data_exchange(request: Request):
 
         if is_encrypted:
             logger.info("Received encrypted request from Meta")
-            decrypted_payload, aes_key, initial_vector = decrypt_request(
-                payload["encrypted_aes_key"],
-                payload["encrypted_flow_data"],
-                payload["initial_vector"],
-            )
+            try:
+                decrypted_payload, aes_key, initial_vector = decrypt_request(
+                    payload["encrypted_aes_key"],
+                    payload["encrypted_flow_data"],
+                    payload["initial_vector"],
+                )
+            except Exception as decrypt_err:
+                logger.error(
+                    "Failed to decrypt Meta request. "
+                    "Ensure PRIVATE_KEY env var (production) or private.pem (local) is correctly configured. "
+                    "Error: %s",
+                    decrypt_err,
+                )
+                raise
             logger.debug(
                 "Decrypted Flow Request: action=%s, screen=%s",
                 decrypted_payload.get("action"),
@@ -303,7 +312,10 @@ async def process_flow_request(payload: dict):
 
     if action == "ping":
         logger.info("Health check received from Meta")
-        return {"data": {"status": "active"}}
+        return {
+            "version": payload.get("version", "3.0"),
+            "data": {"status": "active"},
+        }
 
     token_type, wa_id, entity_id = parse_flow_token(flow_token)
 
