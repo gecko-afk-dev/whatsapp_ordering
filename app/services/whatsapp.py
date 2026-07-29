@@ -103,6 +103,7 @@ class WhatsAppService:
                     "action": {
                         "name": "flow",
                         "parameters": {
+                            "mode": "draft",
                             "flow_message_version": "3",
                             "flow_token": flow_token,
                             "flow_id": settings.WHATSAPP_FLOW_ID,

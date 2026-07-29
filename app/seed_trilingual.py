@@ -25,38 +25,40 @@ async def seed():
             db.add(restaurant)
             await db.flush()
 
-        # 2. Add a Category (Trilingual)
-        cat = Category(
-            restaurant_id=restaurant.id,
-            name_en="Burgers",
-            name_fr="Burgers",
-            name_ar="برغر"
-        )
-        db.add(cat)
-        await db.flush()
+            # 2. Add a Category (Trilingual)
+            cat = Category(
+                restaurant_id=restaurant.id,
+                name_en="Burgers",
+                name_fr="Burgers",
+                name_ar="برغر"
+            )
+            db.add(cat)
+            await db.flush()
 
-        # 3. Add Menu Items (Trilingual)
-        item1 = MenuItem(
-            category_id=cat.id,
-            name_en="Cheese Burger",
-            name_fr="Burger au Fromage",
-            name_ar="تشيز برغر",
-            price=45.0,
-            is_available=True
-        )
-        item2 = MenuItem(
-            category_id=cat.id,
-            name_en="Crispy Chicken",
-            name_fr="Poulet Croustillant",
-            name_ar="دجاج مقرمش",
-            price=55.0,
-            is_available=True
-        )
-        
-        db.add_all([item1, item2])
-        await db.commit()
-        print("--- SEEDING COMPLETE ---")
-        print(f"Restaurant '{restaurant.name}' is ready with {cat.name_en}")
+            # 3. Add Menu Items (Trilingual)
+            item1 = MenuItem(
+                category_id=cat.id,
+                name_en="Cheese Burger",
+                name_fr="Burger au Fromage",
+                name_ar="تشيز برغر",
+                price=45.0,
+                is_available=True
+            )
+            item2 = MenuItem(
+                category_id=cat.id,
+                name_en="Crispy Chicken",
+                name_fr="Poulet Croustillant",
+                name_ar="دجاج مقرمش",
+                price=55.0,
+                is_available=True
+            )
+
+            db.add_all([item1, item2])
+            await db.commit()
+            print("--- SEEDING COMPLETE ---")
+            print(f"Restaurant '{restaurant.name}' is ready with {cat.name_en}")
+        else:
+            print("Mock data already exists, skipping.")
 
 if __name__ == "__main__":
     asyncio.run(seed())
