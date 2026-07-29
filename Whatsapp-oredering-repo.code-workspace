@@ -12,5 +12,18 @@
 			"path": "../../GEQO Marketing Page/geqo-marketing-site"
 		}
 	],
-	"settings": {}
+	"settings": {},
+	"mcp": {
+		"servers": {
+			"meta-developer-tools": {
+				"type": "stdio",
+				"command": "npx",
+				"args": [
+					"-y",
+					"mcp-remote@latest",
+					"https://mcp.facebook.com/devtools"
+				]
+			}
+		}
+	}
 }
