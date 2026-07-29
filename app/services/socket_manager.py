@@ -10,7 +10,8 @@ class ConnectionManager:
         self.active_connections: Dict[int, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, restaurant_id: int):
-        await websocket.accept()
+        # NOTE: websocket.accept() is called by the route handler (dashboard.py)
+        # with the correct subprotocol BEFORE this method. Do NOT accept again.
         if restaurant_id not in self.active_connections:
             self.active_connections[restaurant_id] = []
         self.active_connections[restaurant_id].append(websocket)
