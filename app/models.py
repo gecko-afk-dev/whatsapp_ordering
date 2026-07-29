@@ -106,7 +106,7 @@ class Category(Base):
     name_fr: Mapped[str] = mapped_column(String(100))
     
     restaurant: Mapped["Restaurant"] = relationship(back_populates="categories")
-    items: Mapped[List["MenuItem"]] = relationship(back_populates="category")
+    items: Mapped[List["MenuItem"]] = relationship(back_populates="category", cascade="all, delete-orphan")
 
 class MenuItem(Base):
     __tablename__ = "menu_items"
@@ -121,7 +121,7 @@ class MenuItem(Base):
     allows_exclusions: Mapped[bool] = mapped_column(default=False)  # For items like sandwiches
     
     category: Mapped["Category"] = relationship(back_populates="items")
-    modifier_groups: Mapped[List["ModifierGroup"]] = relationship(back_populates="menu_item")
+    modifier_groups: Mapped[List["ModifierGroup"]] = relationship(back_populates="menu_item", cascade="all, delete-orphan")
 
 class ModifierGroup(Base):
     __tablename__ = "modifier_groups"
@@ -134,7 +134,7 @@ class ModifierGroup(Base):
     max_selection: Mapped[int] = mapped_column(default=1)
     
     menu_item: Mapped["MenuItem"] = relationship(back_populates="modifier_groups")
-    options: Mapped[List["ModifierOption"]] = relationship(back_populates="group")
+    options: Mapped[List["ModifierOption"]] = relationship(back_populates="group", cascade="all, delete-orphan")
 
 class ModifierOption(Base):
     __tablename__ = "modifier_options"
