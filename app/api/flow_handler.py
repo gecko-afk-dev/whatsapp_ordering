@@ -322,7 +322,7 @@ async def process_flow_request(payload: dict):
     if not token_type or not wa_id or not entity_id:
         logger.info("No valid flow_token found. Defaulting to Meta Interactive Preview mode.")
         token_type = "session"
-        wa_id = "preview_simulator_user"
+        wa_id = "test_user_123"
         entity_id = 4  # Hardcoded test restaurant ID for preview purposes
 
     async with AsyncSessionLocal() as db:
