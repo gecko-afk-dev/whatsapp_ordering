@@ -12,7 +12,7 @@ async def seed():
         # 1. Create the Restaurant (Matching your Meta Phone ID)
         # Check if it already exists to avoid duplicates
         res = await db.execute(select(Restaurant).where(Restaurant.phone_number_id == settings.PHONE_NUMBER_ID))
-        restaurant = res.scalar_one_or_none()
+        restaurant = res.scalars().first()
         
         if not restaurant:
             restaurant = Restaurant(
