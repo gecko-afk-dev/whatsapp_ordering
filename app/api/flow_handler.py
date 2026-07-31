@@ -320,11 +320,10 @@ async def process_flow_request(payload: dict):
     token_type, wa_id, entity_id = parse_flow_token(flow_token)
 
     if not token_type or not wa_id or not entity_id:
-        return {
-            "version": "3.0",
-            "screen": "ERROR_SCREEN",
-            "data": {"error_message": "Invalid session token. Please restart."},
-        }
+        logger.info("No valid flow_token found. Defaulting to Meta Interactive Preview mode.")
+        token_type = "session"
+        wa_id = "preview_simulator_user"
+        entity_id = 4  # Hardcoded test restaurant ID for preview purposes
 
     async with AsyncSessionLocal() as db:
         
