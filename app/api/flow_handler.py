@@ -404,7 +404,7 @@ async def process_flow_request(payload: dict):
         restaurant = rest_res.scalar_one_or_none()
         if not restaurant:
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "ERROR_SCREEN",
                 "data": {"error_message": "Restaurant not found."},
             }
