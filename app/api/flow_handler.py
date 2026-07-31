@@ -268,6 +268,7 @@ async def flow_data_exchange(request: Request):
                 decrypted_payload.get("screen"),
             )
             response_data = await process_flow_request(decrypted_payload)
+            logger.info(f"🚨 Python chose this screen: {response_data}")
             encrypted_response = encrypt_response(response_data, aes_key, initial_vector)
             logger.info("Sending encrypted response to Meta")
             
