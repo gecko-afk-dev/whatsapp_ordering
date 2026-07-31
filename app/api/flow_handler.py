@@ -318,7 +318,7 @@ async def process_flow_request(payload: dict):
     if action == "ping":
         logger.info("Health check received from Meta")
         return {
-            "version": "7.3",
+            "version": "3.0",
             "data": {"status": "active"},
         }
 
@@ -339,7 +339,7 @@ async def process_flow_request(payload: dict):
             order = order_req.scalar_one_or_none()
             
             if not order:
-                return {"version": "7.3", "screen": "ERROR_SCREEN", "data": {"error_message": "Order not found."}}
+                return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Order not found."}}
                 
             restaurant = order.restaurant
             wa_service = WhatsAppService(token=restaurant.api_token, phone_id=restaurant.phone_number_id)
@@ -348,12 +348,12 @@ async def process_flow_request(payload: dict):
                 pin_entered = data.get("delivery_pin", "").strip().upper()
                 
                 if order.status == OrderStatus.DELIVERED:
-                    return {"version": "7.3", "screen": "SUCCESS_SCREEN", "data": {"message": "Already delivered!"}}
+                    return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Already delivered!"}}
                 
                 # Check PIN
                 if not order.delivery_pin or order.delivery_pin.upper() != pin_entered:
                     return {
-                        "version": "7.3",
+                        "version": "3.0",
                         "screen": "CONFIRM_DELIVERY_SCREEN",
                         "data": {
                             "error_message": "Invalid PIN. Please try again.",
@@ -365,7 +365,7 @@ async def process_flow_request(payload: dict):
                 driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active))
                 driver = driver_req.scalar_one_or_none()
                 if not driver or driver.id != order.driver_id:
-                    return {"version": "7.3", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
+                    return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
                 
                 # Success
                 order.status = OrderStatus.DELIVERED
@@ -389,14 +389,14 @@ async def process_flow_request(payload: dict):
                 
                 # Success screen for driver
                 return {
-                    "version": "7.3",
+                    "version": "3.0",
                     "screen": "SUCCESS_SCREEN",
                     "data": {"message": "Delivery Confirmed! 🚚"}
                 }
                 
             # Default for driver flow
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "CONFIRM_DELIVERY_SCREEN",
                 "data": {"order_id": order_id, "error_message": ""}
             }
@@ -408,7 +408,7 @@ async def process_flow_request(payload: dict):
         restaurant = rest_res.scalar_one_or_none()
         if not restaurant:
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "ERROR_SCREEN",
                 "data": {"error_message": "Restaurant not found."},
             }
@@ -428,7 +428,7 @@ async def process_flow_request(payload: dict):
             )
             categories = cat_query.scalars().all()
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "CATEGORIES_SCREEN",
                 "data": {
                     "categories": [
@@ -452,7 +452,7 @@ async def process_flow_request(payload: dict):
             items = item_query.scalars().all()
             # FIX: Only return 'id' and 'title' so Meta's strict schema doesn't crash
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "ITEMS_SCREEN",
                 "data": {
                     "items": [
@@ -476,7 +476,7 @@ async def process_flow_request(payload: dict):
             # FIX: Only return the total to match the Cart JSON schema
             cart_items, total = await get_cart_summary(db, cart, lang)
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "CART_SCREEN",
                 "data": {"total": total},
             }
@@ -484,7 +484,7 @@ async def process_flow_request(payload: dict):
         if screen == "CART_SCREEN" and action != "data_exchange":
             cart_items, total = await get_cart_summary(db, cart, lang)
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "CART_SCREEN",
                 "data": {"total": total},
             }
@@ -501,7 +501,7 @@ async def process_flow_request(payload: dict):
 
                 if not cart_item_rows:
                     return {
-                        "version": "7.3",
+                        "version": "3.0",
                         "screen": "ERROR_SCREEN",
                         "data": {
                             "error_message": "Votre panier est vide." if lang == "fr" else "Your cart is empty."
@@ -511,7 +511,7 @@ async def process_flow_request(payload: dict):
                 cart_items, total = await get_cart_summary(db, cart, lang)
                 await wa_service.send_cart_summary(wa_id, lang, cart_items, total)
                 return {
-                    "version": "7.3",
+                    "version": "3.0",
                     "screen": "SUCCESS_SCREEN",
                     "data": {
                         "message": "Commande envoyée! Partagez votre position." if lang == "fr" else "Order sent! Please share your location."
@@ -522,9 +522,9 @@ async def process_flow_request(payload: dict):
         if cart:
             cart_items, total = await get_cart_summary(db, cart, lang)
             return {
-                "version": "7.3",
+                "version": "3.0",
                 "screen": "CART_SCREEN",
                 "data": {"total": total},
             }
             
-        return {"version": "7.3", "screen": "SUCCESS_SCREEN", "data": {"message": "Done"}}
+        return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Done"}}
