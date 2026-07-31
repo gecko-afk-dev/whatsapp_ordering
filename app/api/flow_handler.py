@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 from app.core.database import AsyncSessionLocal
 from app.models import (
-    Category, MenuItem, Customer, Restaurant,
+    Category, MenuItem, Customer, Restaurant, RestaurantStatus, 
     Cart, CartItem, CartItemExclusion, CartItemModifier,
     ModifierGroup, Order, OrderStatus, Driver
 )
@@ -304,6 +304,10 @@ async def flow_data_exchange(request: Request):
 # Flow logic
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Flow logic
+# ---------------------------------------------------------------------------
+
 async def process_flow_request(payload: dict):
     """Process the flow request payload (decrypted or plain)."""
     action = payload.get("action")
@@ -314,7 +318,7 @@ async def process_flow_request(payload: dict):
     if action == "ping":
         logger.info("Health check received from Meta")
         return {
-            "version": payload.get("version", "3.0"),
+            "version": "7.3",
             "data": {"status": "active"},
         }
 
@@ -324,7 +328,7 @@ async def process_flow_request(payload: dict):
         logger.info("No valid flow_token found. Defaulting to Meta Interactive Preview mode.")
         token_type = "session"
         wa_id = "test_user_123"
-        restaurant_id = 4  # Hardcoded test restaurant ID for preview purposes
+        entity_id = 4  # FIX: Assign to entity_id so it passes to restaurant_id below!
 
     async with AsyncSessionLocal() as db:
         
@@ -335,7 +339,7 @@ async def process_flow_request(payload: dict):
             order = order_req.scalar_one_or_none()
             
             if not order:
-                return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Order not found."}}
+                return {"version": "7.3", "screen": "ERROR_SCREEN", "data": {"error_message": "Order not found."}}
                 
             restaurant = order.restaurant
             wa_service = WhatsAppService(token=restaurant.api_token, phone_id=restaurant.phone_number_id)
@@ -344,12 +348,12 @@ async def process_flow_request(payload: dict):
                 pin_entered = data.get("delivery_pin", "").strip().upper()
                 
                 if order.status == OrderStatus.DELIVERED:
-                    return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Already delivered!"}}
+                    return {"version": "7.3", "screen": "SUCCESS_SCREEN", "data": {"message": "Already delivered!"}}
                 
                 # Check PIN
                 if not order.delivery_pin or order.delivery_pin.upper() != pin_entered:
                     return {
-                        "version": "3.0",
+                        "version": "7.3",
                         "screen": "CONFIRM_DELIVERY_SCREEN",
                         "data": {
                             "error_message": "Invalid PIN. Please try again.",
@@ -361,7 +365,7 @@ async def process_flow_request(payload: dict):
                 driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active))
                 driver = driver_req.scalar_one_or_none()
                 if not driver or driver.id != order.driver_id:
-                    return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
+                    return {"version": "7.3", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
                 
                 # Success
                 order.status = OrderStatus.DELIVERED
@@ -385,14 +389,14 @@ async def process_flow_request(payload: dict):
                 
                 # Success screen for driver
                 return {
-                    "version": "3.0",
+                    "version": "7.3",
                     "screen": "SUCCESS_SCREEN",
                     "data": {"message": "Delivery Confirmed! 🚚"}
                 }
                 
             # Default for driver flow
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "CONFIRM_DELIVERY_SCREEN",
                 "data": {"order_id": order_id, "error_message": ""}
             }
@@ -424,7 +428,7 @@ async def process_flow_request(payload: dict):
             )
             categories = cat_query.scalars().all()
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "CATEGORIES_SCREEN",
                 "data": {
                     "categories": [
@@ -444,40 +448,20 @@ async def process_flow_request(payload: dict):
                     Category.restaurant_id == restaurant_id,
                     MenuItem.is_available,
                 )
-                .options(joinedload(MenuItem.modifier_groups).joinedload(ModifierGroup.options))
             )
             items = item_query.scalars().all()
+            # FIX: Only return 'id' and 'title' so Meta's strict schema doesn't crash
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "ITEMS_SCREEN",
                 "data": {
                     "items": [
                         {
                             "id": str(i.id),
-                            "title": getattr(i, f"name_{lang}"),
-                            "price": f"{i.price} MAD",
-                            "item_details": i.item_details if i.item_details else "",
-                            "allows_exclusions": i.allows_exclusions,
-                            "modifiers": [
-                                {
-                                    "id": str(g.id),
-                                    "title": getattr(g, f"name_{lang}"),
-                                    "min": g.min_selection,
-                                    "max": g.max_selection,
-                                    "options": [
-                                        {"id": str(o.id), "title": getattr(o, f"name_{lang}") + (f" (+{o.price_override} MAD)" if o.price_override > 0 else "")}
-                                        for o in g.options
-                                    ]
-                                }
-                                for g in i.modifier_groups
-                            ]
+                            "title": f"{getattr(i, f'name_{lang}')} ({i.price} MAD)"
                         }
                         for i in items
-                    ],
-                    "fulfillment_options": [
-                        {"id": "delivery", "title": "Delivery 🛵"},
-                        {"id": "pickup", "title": "Pickup 🥡"},
-                    ],
+                    ]
                 },
             }
 
@@ -485,118 +469,62 @@ async def process_flow_request(payload: dict):
             item_id = int(data.get("item_id", 0))
             qty = int(data.get("quantity", 1))
             exclusions = data.get("exclusions", [])
-            modifiers = data.get("modifiers", []) # Expecting list of option IDs
+            modifiers = data.get("modifiers", []) 
 
             await add_item_to_cart(db, cart, restaurant_id, item_id, qty, modifiers, exclusions)
 
+            # FIX: Only return the total to match the Cart JSON schema
+            cart_items, total = await get_cart_summary(db, cart, lang)
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "CART_SCREEN",
-                "data": await get_cart_data(db, cart, lang),
+                "data": {"total": total},
             }
 
         if screen == "CART_SCREEN" and action != "data_exchange":
             cart_items, total = await get_cart_summary(db, cart, lang)
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "CART_SCREEN",
-                "data": {
-                    "cart_items": cart_items,
-                    "total": total,
-                },
+                "data": {"total": total},
             }
 
         if action == "data_exchange" and screen == "CART_SCREEN":
             cart_action = data.get("action", "")
 
-            # ── Remove single item from cart ──────────────────────────────
-            if cart_action == "remove_item":
-                item_id = int(data.get("item_id", 0))
-                if item_id:
-                    await db.execute(
-                        delete(CartItem).where(
-                            CartItem.id == item_id,
-                            CartItem.cart_id == cart.id  # ensure ownership
-                        )
-                    )
-                    await db.commit()
-                # Return updated cart state
-                cart_items, total = await get_cart_summary(db, cart, lang)
-                return {
-                    "version": "3.0",
-                    "screen": "CART_SCREEN",
-                    "data": await get_cart_data(db, cart, lang),
-                }
-
-            # ── Loop-back: "Modifier" — go back to categories, cart intact ──
-            # Heuristic: tapping Modifier/Continue Shopping reloads the menu
-            # screen while preserving all existing cart items.
-            if cart_action in ("continue_shopping", "modify"):
-                # Refresh language from DB to ensure preference is current
-                fresh_lang_row = await db.execute(
-                    select(Customer.language).where(Customer.wa_id == wa_id)
-                )
-                lang = fresh_lang_row.scalar_one_or_none() or lang
-
-                cat_query = await db.execute(
-                    select(Category).where(Category.restaurant_id == restaurant_id)
-                )
-                categories = cat_query.scalars().all()
-                return {
-                    "version": "3.0",
-                    "screen": "CATEGORIES_SCREEN",
-                    "data": {
-                        "categories": [
-                            {"id": str(c.id), "title": getattr(c, f"name_{lang}")}
-                            for c in categories
-                        ]
-                    },
-                }
-
             # ── Confirm order — empty cart guard ─────────────────────────
             if cart_action == "confirm":
-                # Re-load cart items to get accurate count (avoid race condition)
                 cart_check = await db.execute(
                     select(CartItem).where(CartItem.cart_id == cart.id)
                 )
                 cart_item_rows = cart_check.scalars().all()
 
                 if not cart_item_rows:
-                    # Fail closed: do not close the Flow if cart is empty
                     return {
-                        "version": "3.0",
-                        "screen": "CART_SCREEN",
+                        "version": "7.3",
+                        "screen": "ERROR_SCREEN",
                         "data": {
-                            "cart_items": [],
-                            "total": "0 MAD",
-                            "error": "Votre panier est vide. Ajoutez des articles d'abord."
-                            if lang == "fr" else
-                            "سلة الطلبات فارغة. أضف عناصر أولاً."
-                            if lang == "ar" else
-                            "Your cart is empty. Please add items first.",
+                            "error_message": "Votre panier est vide." if lang == "fr" else "Your cart is empty."
                         },
                     }
 
-                # Cart has items — send WhatsApp summary and close Flow
                 cart_items, total = await get_cart_summary(db, cart, lang)
                 await wa_service.send_cart_summary(wa_id, lang, cart_items, total)
                 return {
-                    "version": "3.0",
+                    "version": "7.3",
                     "screen": "SUCCESS_SCREEN",
                     "data": {
-                        "message": "Commande envoyée! Partagez votre position."
-                        if lang == "fr" else
-                        "تم إرسال طلبك! شارك موقعك."
-                        if lang == "ar" else
-                        "Order sent! Please share your location."
+                        "message": "Commande envoyée! Partagez votre position." if lang == "fr" else "Order sent! Please share your location."
                     },
                 }
 
-        # Default fallback — return current cart state if possible
+        # Default fallback
         if cart:
+            cart_items, total = await get_cart_summary(db, cart, lang)
             return {
-                "version": "3.0",
+                "version": "7.3",
                 "screen": "CART_SCREEN",
-                "data": await get_cart_data(db, cart, lang),
+                "data": {"total": total},
             }
-        return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Done"}}
+            
+        return {"version": "7.3", "screen": "SUCCESS_SCREEN", "data": {"message": "Done"}}
