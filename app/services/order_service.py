@@ -2,7 +2,7 @@ import secrets
 import string
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Category, ModifierGroup, Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod, OrderItemModifier, ModifierOption, Driver
+from app.models import Category, ModifierGroup, Order, OrderItem, OrderItemExclusion, MenuItem, OrderStatus, FulfillmentMethod, OrderItemModifier, ModifierOption, Driver, WalletTransaction, TransactionType, Restaurant
 
 class OrderService:
     @staticmethod
@@ -127,6 +127,13 @@ class OrderService:
         restaurant = res_rest.scalar_one_or_none()
         if restaurant:
             restaurant.wallet_balance -= 3.0
+            transaction = WalletTransaction(
+                restaurant_id=restaurant_id,
+                amount=-3.0,
+                type=TransactionType.DEBIT,
+                description=f"Order commission (Order #{new_order.id})"
+            )
+            db.add(transaction)
             
         await db.commit()
         return new_order

@@ -220,13 +220,15 @@ async def update_order_status(
         customer_lang = customer.language if customer and customer.language else "fr"
 
         # Write audit log
-        from app.api.admin import write_audit_log
-        await write_audit_log(
+        from app.services.audit import log_audit_action
+        await log_audit_action(
             db=db,
-            user=current_user,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
             action="ORDER_STATUS_UPDATED",
             target=f"order_id={order.id}",
-            detail=f"Order status changed to {body.new_status.value} (previously: {order.status.value})"
+            detail={"old": order.status.value, "new": body.new_status.value},
+            restaurant_id=order.restaurant_id
         )
 
         # Generate delivery PIN if accepting a delivery order
@@ -332,13 +334,15 @@ async def toggle_item_availability(
         await db.commit()
 
         # Write audit log
-        from app.api.admin import write_audit_log
-        await write_audit_log(
+        from app.services.audit import log_audit_action
+        await log_audit_action(
             db=db,
-            user=current_user,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
             action="ITEM_AVAILABILITY_TOGGLED",
             target=f"item_id={item.id}",
-            detail=f"Item '{item.name_en}' availability toggled to {'available' if item.is_available else 'unavailable'}"
+            detail={"item_name": item.name_en, "is_available": item.is_available},
+            restaurant_id=current_user.restaurant_id
         )
 
         return {"status": "toggled", "is_available": item.is_available}

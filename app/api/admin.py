@@ -3,7 +3,7 @@ import os
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
 
@@ -14,7 +14,7 @@ from app.services.email import EmailService
 import secrets
 from app.models import (
     Restaurant, RestaurantStatus, PaymentStatus, Order, OrderStatus,
-    User as UserModel, UserRole, MenuItem, AuditLog
+    User as UserModel, UserRole, MenuItem, AuditLog, WalletTransaction, TransactionType
 )
 
 router = APIRouter()
@@ -82,6 +82,23 @@ class RestaurantAnalytics(BaseModel):
 
 class CreditRequest(BaseModel):
     amount: float
+
+class BillingAdjustRequest(BaseModel):
+    restaurant_id: int
+    amount: float
+    type: str
+    description: str
+
+class WalletTransactionResponse(BaseModel):
+    id: int
+    restaurant_id: int
+    amount: float
+    type: str
+    description: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 # --- Authentication ---
 
@@ -445,23 +462,82 @@ async def list_restaurants(current_user: User = Depends(get_current_admin)):
             "created_at": r.created_at.isoformat() if r.created_at else None
         } for r in restaurants]
 
-@router.post("/restaurants/{restaurant_id}/credit")
-async def credit_wallet(
-    restaurant_id: int,
-    request: CreditRequest,
+@router.get("/billing/transactions", response_model=List[WalletTransactionResponse])
+async def get_billing_transactions(
+    restaurant_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get wallet transactions. Owners see their own, admins see all or filter by restaurant."""
+    async with AsyncSessionLocal() as db:
+        query = select(WalletTransaction).order_by(desc(WalletTransaction.created_at))
+        
+        if current_user.role != UserRole.ADMIN:
+            # Owners/Cashiers can only see their own
+            if not current_user.restaurant_id:
+                raise HTTPException(status_code=400, detail="No restaurant assigned")
+            query = query.where(WalletTransaction.restaurant_id == current_user.restaurant_id)
+        else:
+            # Admins can optionally filter
+            if restaurant_id:
+                query = query.where(WalletTransaction.restaurant_id == restaurant_id)
+                
+        result = await db.execute(query)
+        transactions = result.scalars().all()
+        
+        # Convert Enum to string for the response
+        resp = []
+        for t in transactions:
+            resp.append(WalletTransactionResponse(
+                id=t.id,
+                restaurant_id=t.restaurant_id,
+                amount=t.amount,
+                type=t.type.value,
+                description=t.description,
+                created_at=t.created_at
+            ))
+        return resp
+
+@router.post("/billing/adjust")
+async def adjust_billing(
+    request: BillingAdjustRequest,
     current_user: User = Depends(get_current_admin)
 ):
-    """Credit a restaurant's prepaid wallet."""
+    """Adjust a restaurant's wallet balance manually (Admin only)."""
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+        result = await db.execute(select(Restaurant).where(Restaurant.id == request.restaurant_id))
         restaurant = result.scalar_one_or_none()
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
         
+        try:
+            tx_type = TransactionType(request.type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid transaction type")
+            
         restaurant.wallet_balance += request.amount
+        
+        transaction = WalletTransaction(
+            restaurant_id=restaurant.id,
+            amount=request.amount,
+            type=tx_type,
+            description=request.description
+        )
+        db.add(transaction)
+        
+        from app.services.audit import log_audit_action
+        await log_audit_action(
+            db=db,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
+            action="BILLING_ADJUSTED",
+            target=f"restaurant_id={restaurant.id}",
+            detail={"amount": request.amount, "type": request.type, "description": request.description},
+            restaurant_id=restaurant.id
+        )
+        
         await db.commit()
         
-        return {"message": f"Successfully credited {request.amount} MAD", "wallet_balance": restaurant.wallet_balance}
+        return {"message": f"Successfully adjusted wallet", "wallet_balance": restaurant.wallet_balance}
 
 @router.put("/restaurants/{restaurant_id}")
 async def update_restaurant(
@@ -644,7 +720,7 @@ class AuditLogResponse(BaseModel):
     actor_email: EmailStr
     action: str
     target: Optional[str]
-    detail: Optional[str]
+    detail: Optional[Any]
     created_at: datetime
 
     class Config:
@@ -658,13 +734,14 @@ async def write_audit_log(
     detail: Optional[str] = None
 ):
     """Helper to record audit log entry inside the database."""
+    detail_data = {"message": detail} if detail else None
     log_entry = AuditLog(
         restaurant_id=user.restaurant_id,
         actor_user_id=user.id,
         actor_email=user.email,
         action=action,
         target=target,
-        detail=detail
+        detail=detail_data
     )
     db.add(log_entry)
     await db.commit()

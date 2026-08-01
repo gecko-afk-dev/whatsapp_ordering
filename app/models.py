@@ -4,6 +4,7 @@ from enum import Enum as PyEnum
 from typing import List, Optional
 from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 class Base(DeclarativeBase):
     pass
@@ -23,6 +24,11 @@ class OrderStatus(PyEnum):
 class FulfillmentMethod(PyEnum):
     DELIVERY = "delivery"
     PICKUP = "pickup"
+
+class TransactionType(PyEnum):
+    CREDIT = "credit"
+    DEBIT = "debit"
+    CORRECTION = "correction"
 
 class UserRole(PyEnum):
     ADMIN = "admin"
@@ -46,6 +52,17 @@ class BetaCardStatus(PyEnum):
     EXPIRED = "expired"        # Manually expired by admin
 
 # --- Tables ---
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    type: Mapped[TransactionType] = mapped_column(Enum(TransactionType))
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    restaurant: Mapped["Restaurant"] = relationship()
 
 class User(Base):
     __tablename__ = "users"
@@ -284,7 +301,7 @@ class AuditLog(Base):
     actor_email: Mapped[str] = mapped_column(String(100))
     action: Mapped[str] = mapped_column(String(100), index=True)  # e.g. ORDER_STATUS_UPDATED
     target: Mapped[Optional[str]] = mapped_column(String(100))    # e.g. order_id=42
-    detail: Mapped[Optional[str]] = mapped_column(Text)            # human-readable summary
+    detail: Mapped[Optional[dict]] = mapped_column(JSONB)            # structured JSON data
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 class BetaCard(Base):
