@@ -28,7 +28,8 @@ class MenuItemCreate(BaseModel):
     allows_exclusions: bool = False
 
 class ModifierGroupCreate(BaseModel):
-    menu_item_id: int
+    menu_item_id: Optional[int] = None
+    category_id: Optional[int] = None
     name_en: str
     name_ar: str
     name_fr: str
@@ -55,9 +56,10 @@ async def get_full_menu(restaurant_id: int, current_user: User = Depends(get_man
     async with AsyncSessionLocal() as db:
         await check_restaurant_access(db, current_user, restaurant_id)
         
-        # Load categories with items -> modifier_groups -> options
+        # Load categories with their own modifier groups, and items with their modifier groups
         stmt = select(Category).where(Category.restaurant_id == restaurant_id).options(
-            selectinload(Category.items).selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options)
+            selectinload(Category.items).selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options),
+            selectinload(Category.modifier_groups).selectinload(ModifierGroup.options)
         )
         res = await db.execute(stmt)
         categories = res.scalars().all()
@@ -136,16 +138,28 @@ async def delete_item(item_id: int, current_user: User = Depends(get_manager_or_
 
 @router.post("/modifiers/groups")
 async def create_modifier_group(group: ModifierGroupCreate, current_user: User = Depends(get_manager_or_admin)):
+    if (group.menu_item_id is None) == (group.category_id is None):
+        raise HTTPException(status_code=400, detail="Must provide exactly one of menu_item_id or category_id")
+
     async with AsyncSessionLocal() as db:
-        stmt = select(MenuItem).where(MenuItem.id == group.menu_item_id).options(selectinload(MenuItem.category))
-        res = await db.execute(stmt)
-        item = res.scalar_one_or_none()
-        if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
-        await check_restaurant_access(db, current_user, item.category.restaurant_id)
+        if group.menu_item_id:
+            stmt = select(MenuItem).where(MenuItem.id == group.menu_item_id).options(selectinload(MenuItem.category))
+            res = await db.execute(stmt)
+            parent = res.scalar_one_or_none()
+            if not parent:
+                raise HTTPException(status_code=404, detail="Item not found")
+            await check_restaurant_access(db, current_user, parent.category.restaurant_id)
+        else:
+            stmt = select(Category).where(Category.id == group.category_id)
+            res = await db.execute(stmt)
+            parent = res.scalar_one_or_none()
+            if not parent:
+                raise HTTPException(status_code=404, detail="Category not found")
+            await check_restaurant_access(db, current_user, parent.restaurant_id)
         
         new_group = ModifierGroup(
             menu_item_id=group.menu_item_id,
+            category_id=group.category_id,
             name_en=group.name_en,
             name_ar=group.name_ar,
             name_fr=group.name_fr,
@@ -161,13 +175,20 @@ async def create_modifier_group(group: ModifierGroupCreate, current_user: User =
 async def create_modifier_option(option: ModifierOptionCreate, current_user: User = Depends(get_manager_or_admin)):
     async with AsyncSessionLocal() as db:
         stmt = select(ModifierGroup).where(ModifierGroup.id == option.group_id).options(
-            selectinload(ModifierGroup.menu_item).selectinload(MenuItem.category)
+            selectinload(ModifierGroup.menu_item).selectinload(MenuItem.category),
+            selectinload(ModifierGroup.category)
         )
         res = await db.execute(stmt)
         group = res.scalar_one_or_none()
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
-        await check_restaurant_access(db, current_user, group.menu_item.category.restaurant_id)
+        
+        if group.menu_item:
+            res_id = group.menu_item.category.restaurant_id
+        else:
+            res_id = group.category.restaurant_id
+            
+        await check_restaurant_access(db, current_user, res_id)
         
         new_opt = ModifierOption(
             group_id=option.group_id,
@@ -180,3 +201,48 @@ async def create_modifier_option(option: ModifierOptionCreate, current_user: Use
         await db.commit()
         await db.refresh(new_opt)
         return new_opt
+
+@router.delete("/modifiers/groups/{group_id}")
+async def delete_modifier_group(group_id: int, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt = select(ModifierGroup).where(ModifierGroup.id == group_id).options(
+            selectinload(ModifierGroup.menu_item).selectinload(MenuItem.category),
+            selectinload(ModifierGroup.category)
+        )
+        res = await db.execute(stmt)
+        group = res.scalar_one_or_none()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        if group.menu_item:
+            res_id = group.menu_item.category.restaurant_id
+        else:
+            res_id = group.category.restaurant_id
+        await check_restaurant_access(db, current_user, res_id)
+        
+        await db.delete(group)
+        await db.commit()
+        return {"status": "deleted"}
+
+@router.delete("/modifiers/options/{option_id}")
+async def delete_modifier_option(option_id: int, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt = select(ModifierOption).where(ModifierOption.id == option_id).options(
+            selectinload(ModifierOption.group).selectinload(ModifierGroup.menu_item).selectinload(MenuItem.category),
+            selectinload(ModifierOption.group).selectinload(ModifierGroup.category)
+        )
+        res = await db.execute(stmt)
+        opt = res.scalar_one_or_none()
+        if not opt:
+            raise HTTPException(status_code=404, detail="Option not found")
+            
+        group = opt.group
+        if group.menu_item:
+            res_id = group.menu_item.category.restaurant_id
+        else:
+            res_id = group.category.restaurant_id
+        await check_restaurant_access(db, current_user, res_id)
+        
+        await db.delete(opt)
+        await db.commit()
+        return {"status": "deleted"}

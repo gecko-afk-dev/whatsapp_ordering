@@ -19,60 +19,67 @@ async def get_public_menu(restaurant_id: int):
         if not restaurant or restaurant.status != RestaurantStatus.ACTIVE:
             raise HTTPException(status_code=404, detail="Restaurant not found or inactive")
 
-        # Fetch categories with their items and modifier groups
+        # Fetch categories with their items and modifier groups (both levels)
+        from sqlalchemy.orm import selectinload
         cat_query = await db.execute(
             select(Category)
             .where(Category.restaurant_id == restaurant_id)
             .options(
-                joinedload(Category.items).joinedload(MenuItem.modifier_groups)
+                selectinload(Category.items).selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options),
+                selectinload(Category.modifier_groups).selectinload(ModifierGroup.options)
             )
         )
         categories = cat_query.scalars().unique().all()
         
-        # We also need to eagerly load the modifier options for the groups.
-        # It's cleaner to build the response dictionary manually to ensure proper serialization.
-        
-        # Fetching all modifier groups and options for this restaurant's items
-        from app.models import ModifierGroup, ModifierOption
-        mod_groups_query = await db.execute(
-            select(ModifierGroup)
-            .join(MenuItem)
-            .join(Category)
-            .where(Category.restaurant_id == restaurant_id)
-            .options(joinedload(ModifierGroup.options))
-        )
-        mod_groups = mod_groups_query.scalars().unique().all()
-        
-        # Map groups by menu_item_id
-        groups_by_item = {}
-        for group in mod_groups:
-            if group.menu_item_id not in groups_by_item:
-                groups_by_item[group.menu_item_id] = []
-            
-            groups_by_item[group.menu_item_id].append({
-                "id": group.id,
-                "name_fr": group.name_fr,
-                "name_ar": group.name_ar,
-                "name_en": group.name_en,
-                "min_selection": group.min_selection,
-                "max_selection": group.max_selection,
-                "options": [
-                    {
-                        "id": opt.id,
-                        "name_fr": opt.name_fr,
-                        "name_ar": opt.name_ar,
-                        "name_en": opt.name_en,
-                        "price_override": opt.price_override
-                    } for opt in group.options
-                ]
-            })
-
         categories_data = []
         for cat in categories:
+            # Serialize category-level modifier groups
+            cat_mod_groups = []
+            for group in cat.modifier_groups:
+                cat_mod_groups.append({
+                    "id": group.id,
+                    "name_fr": group.name_fr,
+                    "name_ar": group.name_ar,
+                    "name_en": group.name_en,
+                    "min_selection": group.min_selection,
+                    "max_selection": group.max_selection,
+                    "options": [
+                        {
+                            "id": opt.id,
+                            "name_fr": opt.name_fr,
+                            "name_ar": opt.name_ar,
+                            "name_en": opt.name_en,
+                            "price_override": opt.price_override
+                        } for opt in group.options
+                    ]
+                })
+
             items_data = []
             for item in cat.items:
                 if not item.is_available:
                     continue
+                
+                # Serialize item-level modifier groups
+                item_mod_groups = []
+                for group in item.modifier_groups:
+                    item_mod_groups.append({
+                        "id": group.id,
+                        "name_fr": group.name_fr,
+                        "name_ar": group.name_ar,
+                        "name_en": group.name_en,
+                        "min_selection": group.min_selection,
+                        "max_selection": group.max_selection,
+                        "options": [
+                            {
+                                "id": opt.id,
+                                "name_fr": opt.name_fr,
+                                "name_ar": opt.name_ar,
+                                "name_en": opt.name_en,
+                                "price_override": opt.price_override
+                            } for opt in group.options
+                        ]
+                    })
+                
                 items_data.append({
                     "id": item.id,
                     "name_fr": item.name_fr,
@@ -81,7 +88,7 @@ async def get_public_menu(restaurant_id: int):
                     "price": item.price,
                     "item_details": item.item_details,
                     "allows_exclusions": item.allows_exclusions,
-                    "modifier_groups": groups_by_item.get(item.id, [])
+                    "modifier_groups": item_mod_groups
                 })
             
             categories_data.append({
@@ -89,6 +96,7 @@ async def get_public_menu(restaurant_id: int):
                 "name_fr": cat.name_fr,
                 "name_ar": cat.name_ar,
                 "name_en": cat.name_en,
+                "modifier_groups": cat_mod_groups,
                 "items": items_data
             })
 

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Resend Configuration
     RESEND_API_KEY: Optional[str] = None
     RESEND_FROM_EMAIL: Optional[str] = None
-    ADMIN_NOTIFICATION_EMAIL: str = "admin@geqo.com"
+    ADMIN_NOTIFICATION_EMAIL: str = "admin@mygeqo.com"
 
     # Feature Flags for incremental release
     FEATURE_OVERVIEW_ENABLED: bool = False
