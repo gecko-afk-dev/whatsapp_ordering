@@ -133,7 +133,7 @@ async def handle_events(request: Request):
             res_query = await db.execute(
                 select(Restaurant).where(Restaurant.phone_number_id == phone_id)
             )
-            restaurant = res_query.scalar_one_or_none()
+            restaurant = res_query.scalars().first()
             if not restaurant:
                 logger.warning("Webhook received for unknown phone_number_id=%s", phone_id)
                 return Response(status_code=200)
