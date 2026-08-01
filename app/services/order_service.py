@@ -119,8 +119,15 @@ class OrderService:
         if valid_item_count == 0:
             raise ValueError("At least one available item must be selected.")
 
-        # 4. Update the final total price and save
+        # 4. Update the final total price, deduct wallet balance, and save
         new_order.total_price = total_price
+        
+        # Deduct 3.0 MAD from Prepaid Wallet
+        res_rest = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+        restaurant = res_rest.scalar_one_or_none()
+        if restaurant:
+            restaurant.wallet_balance -= 3.0
+            
         await db.commit()
         return new_order
 

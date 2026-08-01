@@ -54,6 +54,12 @@ class RestaurantUpdate(BaseModel):
     status: Optional[RestaurantStatus] = None
     payment_status: Optional[PaymentStatus] = None
 
+class ProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    old_password: Optional[str] = None
+    password: Optional[str] = None
+
 class AnalyticsSummary(BaseModel):
     total_restaurants: int
     active_restaurants: int
@@ -73,6 +79,9 @@ class RestaurantAnalytics(BaseModel):
     avg_order_value: float
     status: str
     payment_status: str
+
+class CreditRequest(BaseModel):
+    amount: float
 
 # --- Authentication ---
 
@@ -206,6 +215,44 @@ async def setup_admin(x_setup_token: Optional[str] = Header(None)):
         await db.commit()
 
         return {"message": "Admin account initialized successfully. Please login and complete setup."}
+
+# --- Profile Routes ---
+
+@router.get("/profile", response_model=dict)
+async def get_profile(current_user: User = Depends(get_current_user)):
+    """Get the current user's profile information."""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "role": current_user.role.value,
+        "full_name": current_user.full_name,
+        "contact_phone": current_user.contact_phone
+    }
+
+@router.put("/profile", response_model=dict)
+async def update_profile(updates: ProfileUpdate, current_user: User = Depends(get_current_user)):
+    """Update the current user's profile and optionally password."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(UserModel).where(UserModel.id == current_user.id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if updates.full_name is not None:
+            user.full_name = updates.full_name
+        if updates.contact_phone is not None:
+            user.contact_phone = updates.contact_phone
+            
+        if updates.password:
+            if not updates.old_password:
+                raise HTTPException(status_code=400, detail="Old password is required to change password.")
+            if not verify_password(updates.old_password, user.password_hash):
+                raise HTTPException(status_code=400, detail="Incorrect old password.")
+            user.password_hash = get_password_hash(updates.password)
+
+        await db.commit()
+        return {"message": "Profile updated successfully"}
 
 # --- Admin Routes ---
 
@@ -393,9 +440,28 @@ async def list_restaurants(current_user: User = Depends(get_current_admin)):
             "status": r.status.value,
             "payment_status": r.payment_status.value,
             "commission_rate": r.commission_rate,
+            "wallet_balance": r.wallet_balance,
             "contact_email": r.contact_email,
             "created_at": r.created_at.isoformat() if r.created_at else None
         } for r in restaurants]
+
+@router.post("/restaurants/{restaurant_id}/credit")
+async def credit_wallet(
+    restaurant_id: int,
+    request: CreditRequest,
+    current_user: User = Depends(get_current_admin)
+):
+    """Credit a restaurant's prepaid wallet."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+        restaurant = result.scalar_one_or_none()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        
+        restaurant.wallet_balance += request.amount
+        await db.commit()
+        
+        return {"message": f"Successfully credited {request.amount} MAD", "wallet_balance": restaurant.wallet_balance}
 
 @router.put("/restaurants/{restaurant_id}")
 async def update_restaurant(
@@ -503,7 +569,13 @@ async def get_restaurant_dashboard(current_user: User = Depends(get_current_cash
                 "id": restaurant.id,
                 "name": restaurant.name,
                 "status": restaurant.status.value,
-                "payment_status": restaurant.payment_status.value
+                "payment_status": restaurant.payment_status.value,
+                "wallet_balance": restaurant.wallet_balance,
+                "latitude": restaurant.latitude,
+                "longitude": restaurant.longitude,
+                "max_delivery_radius_km": restaurant.max_delivery_radius_km,
+                "base_delivery_fee": restaurant.base_delivery_fee,
+                "per_km_delivery_fee": restaurant.per_km_delivery_fee
             },
             "today_stats": {
                 "orders": today_orders,

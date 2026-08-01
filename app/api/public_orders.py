@@ -157,6 +157,9 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         new_order.total_price = item_total + delivery_fee
         new_order.delivery_pin = await OrderService.generate_delivery_pin(db)
         
+        # Deduct from Prepaid Wallet
+        restaurant.wallet_balance -= 3.0
+        
         await db.commit()
         await db.refresh(new_order)
 

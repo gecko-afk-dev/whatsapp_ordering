@@ -11,7 +11,7 @@ from app.core.auth import (
     SECRET_KEY, ALGORITHM, get_current_cashier_or_above, get_current_kitchen_or_above,
     assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
@@ -73,6 +73,13 @@ class OrderSchema(BaseModel):
 class StatusUpdateBody(BaseModel):
     new_status: OrderStatus
     driver_id: Optional[int] = None
+
+class DeliverySettingsUpdate(BaseModel):
+    latitude: float
+    longitude: float
+    max_delivery_radius_km: float
+    base_delivery_fee: float
+    per_km_delivery_fee: float
 
 
 # ---------------------------------------------------------------------------
@@ -335,3 +342,29 @@ async def toggle_item_availability(
         )
 
         return {"status": "toggled", "is_available": item.is_available}
+
+@router.put("/restaurant/delivery-settings")
+async def update_delivery_settings(
+    payload: DeliverySettingsUpdate,
+    current_user: User = Depends(get_current_kitchen_or_above)
+):
+    """Update geo-fencing and delivery settings. Requires Owner or Admin."""
+    if current_user.role not in [UserRole.RESTAURANT_OWNER, UserRole.ADMIN]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned")
+        
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Restaurant).where(Restaurant.id == current_user.restaurant_id))
+        restaurant = res.scalar_one_or_none()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+            
+        restaurant.latitude = payload.latitude
+        restaurant.longitude = payload.longitude
+        restaurant.max_delivery_radius_km = payload.max_delivery_radius_km
+        restaurant.base_delivery_fee = payload.base_delivery_fee
+        restaurant.per_km_delivery_fee = payload.per_km_delivery_fee
+        
+        await db.commit()
+        return {"status": "success"}

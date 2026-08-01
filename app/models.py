@@ -54,6 +54,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole))
     is_active: Mapped[bool] = mapped_column(default=True)
+    full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     # For restaurant owners
@@ -85,6 +87,7 @@ class Restaurant(Base):
     status: Mapped[RestaurantStatus] = mapped_column(Enum(RestaurantStatus), default=RestaurantStatus.ACTIVE)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PAID)
     commission_rate: Mapped[float] = mapped_column(Float, default=0.20)  # 20%
+    wallet_balance: Mapped[float] = mapped_column(Float, default=0.0)
     address: Mapped[Optional[str]] = mapped_column(String(255))
     cuisine_type: Mapped[Optional[str]] = mapped_column(String(50))
     operating_hours: Mapped[Optional[str]] = mapped_column(Text)  # JSON string
