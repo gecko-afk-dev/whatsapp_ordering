@@ -74,6 +74,13 @@ class Restaurant(Base):
     phone_number_id: Mapped[str] = mapped_column(String(50))
     owner_wa_id: Mapped[str] = mapped_column(String(20))
     
+    # Geo-Fencing & Delivery Fields
+    latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_delivery_radius_km: Mapped[float] = mapped_column(Float, default=10.0)
+    base_delivery_fee: Mapped[float] = mapped_column(Float, default=10.0)
+    per_km_delivery_fee: Mapped[float] = mapped_column(Float, default=2.0)
+
     # New fields for Phase 1
     status: Mapped[RestaurantStatus] = mapped_column(Enum(RestaurantStatus), default=RestaurantStatus.ACTIVE)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PAID)
@@ -159,6 +166,9 @@ class Order(Base):
     longitude: Mapped[Optional[float]] = mapped_column(Float)
     driver_id: Mapped[Optional[int]] = mapped_column(ForeignKey("drivers.id"))
     delivery_pin: Mapped[Optional[str]] = mapped_column(String(20), unique=True, index=True)
+    delivery_fee: Mapped[float] = mapped_column(Float, default=0.0)
+    customer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    customer_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     # Use strings "Restaurant" etc. to avoid NameErrors

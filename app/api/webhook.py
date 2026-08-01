@@ -3,6 +3,8 @@ import hmac
 import json
 import logging
 import time
+from datetime import datetime, timedelta
+from jose import jwt
 from fastapi import APIRouter, Request, Response
 from sqlalchemy.future import select
 from sqlalchemy import delete
@@ -56,6 +58,15 @@ def verify_webhook_signature(request: Request, raw_body: bytes) -> bool:
         logger.warning("Invalid webhook signature. Possible spoofing attack.")
     return valid
 
+def generate_magic_link(wa_id: str, restaurant_id: int) -> str:
+    payload = {
+        "sub": wa_id,
+        "rid": restaurant_id,
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(minutes=30)
+    }
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    return f"https://menu.mygeqo.com/{restaurant_id}?session={token}"
 
 @router.get("/webhook")
 async def verify_webhook(request: Request):
@@ -235,7 +246,8 @@ async def handle_events(request: Request):
                         "ar" if "ar" in sel_id else "fr" if "fr" in sel_id else "en"
                     )
                     await db.commit()
-                    await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                    magic_link = generate_magic_link(wa_id, restaurant.id)
+                    await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
                 else:
                     await wa_service.send_language_picker(wa_id)
                 return Response(status_code=200)
@@ -243,7 +255,8 @@ async def handle_events(request: Request):
             # Customer exists with language set
 
             if m_type == "text":
-                await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                magic_link = generate_magic_link(wa_id, restaurant.id)
+                await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
                 return Response(status_code=200)
 
             elif m_type == "interactive":
@@ -316,7 +329,8 @@ async def handle_events(request: Request):
                         return Response(status_code=200)
 
                     elif btn_id == "change_order":
-                        await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                        magic_link = generate_magic_link(wa_id, restaurant.id)
+                        await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
                         return Response(status_code=200)
 
                     elif btn_id.startswith("mgr_accept_"):
@@ -457,7 +471,8 @@ async def handle_events(request: Request):
                         return Response(status_code=200)
 
                     else:
-                        await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+                        magic_link = generate_magic_link(wa_id, restaurant.id)
+                        await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
                         return Response(status_code=200)
 
             elif m_type == "location":
@@ -480,7 +495,8 @@ async def handle_events(request: Request):
                 return Response(status_code=200)
 
             # Fallback for unhandled message types
-            await wa_service.send_main_menu_flow(wa_id, customer.language, restaurant.id)
+            magic_link = generate_magic_link(wa_id, restaurant.id)
+            await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
             return Response(status_code=200)
 
     except json.JSONDecodeError:

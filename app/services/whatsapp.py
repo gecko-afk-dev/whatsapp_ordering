@@ -84,12 +84,17 @@ class WhatsAppService:
             }
         )
 
-    async def send_main_menu_flow(self, to_phone: str, lang: str, restaurant_id: int = 1):
+    async def send_magic_link(self, to_phone: str, lang: str, restaurant_id: int, magic_url: str):
         """
-        Launches the Single-Flow Commerce Experience.
-        Token format: session_{wa_id}_{restaurant_id}_{timestamp}
+        Sends a WhatsApp CTA URL Button with the Magic Link to the Hybrid PWA Funnel.
         """
-        flow_token = f"session_{to_phone}_{restaurant_id}_{int(datetime.utcnow().timestamp())}"
+        header_text = {"fr": "Menu GEQO", "ar": "قائمة جيكو", "en": "GEQO Menu"}.get(lang, "Menu GEQO")
+        body_text = {
+            "fr": "Cliquez ci-dessous pour ouvrir le menu et commander.",
+            "ar": "اضغط أدناه لفتح القائمة والطلب.",
+            "en": "Tap below to open the menu and order."
+        }.get(lang, "Cliquez ci-dessous pour ouvrir le menu et commander.")
+        button_text = {"fr": "🛒 Ouvrir le Menu", "ar": "🛒 افتح القائمة", "en": "🛒 Open Menu"}.get(lang, "🛒 Ouvrir le Menu")
 
         await self._post(
             {
@@ -97,19 +102,14 @@ class WhatsAppService:
                 "to": to_phone,
                 "type": "interactive",
                 "interactive": {
-                    "type": "flow",
-                    "header": {"type": "text", "text": "GEQO Menu"},
-                    "body": {"text": "Tap below to open the menu app"},
+                    "type": "cta_url",
+                    "header": {"type": "text", "text": header_text},
+                    "body": {"text": body_text},
                     "action": {
-                        "name": "flow",
+                        "name": "cta_url",
                         "parameters": {
-                            "mode": "draft",
-                            "flow_message_version": "3",
-                            "flow_token": flow_token,
-                            "flow_id": settings.WHATSAPP_FLOW_ID,
-                            "flow_cta": "Open Menu",
-                            "flow_action": "navigate",
-                            "flow_action_payload": {"screen": "CATEGORIES_SCREEN"},
+                            "display_text": button_text,
+                            "url": magic_url,
                         },
                     },
                 },
