@@ -10,6 +10,9 @@
 		{
 			"name": "geqo-marketing-site",
 			"path": "../../GEQO Marketing Page/geqo-marketing-site"
+		},
+		{
+			"path": "../../GEQO_Menu_PWA"
 		}
 	],
 	"settings": {},
