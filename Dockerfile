@@ -24,4 +24,4 @@ COPY . .
 # Start FastAPI using Uvicorn
 # 1. We changed "main:app" to "app.main:app" (assuming your main.py is inside the app folder)
 # 2. We allow Render to inject its own $PORT variable dynamically
-CMD sh -c "python -m app.seed_admin && python -m app.seed_trilingual && uvicorn app.main:app --host 0.0.0.0 --port $PORT --forwarded-allow-ips '*'"
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --forwarded-allow-ips '*'"]
