@@ -126,6 +126,8 @@ class OrderService:
         res_rest = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
         restaurant = res_rest.scalar_one_or_none()
         if restaurant:
+            if restaurant.wallet_balance <= -75.0:
+                raise ValueError("ERROR_SCREEN")
             restaurant.wallet_balance -= 3.0
             transaction = WalletTransaction(
                 restaurant_id=restaurant_id,

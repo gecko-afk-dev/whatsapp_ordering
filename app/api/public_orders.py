@@ -157,8 +157,20 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         new_order.total_price = item_total + delivery_fee
         new_order.delivery_pin = await OrderService.generate_delivery_pin(db)
         
+        # Enforce Grace Period
+        if restaurant.wallet_balance <= -75.0:
+            raise HTTPException(status_code=400, detail="ERROR_SCREEN")
+            
         # Deduct from Prepaid Wallet
+        from app.models import WalletTransaction, TransactionType
         restaurant.wallet_balance -= 3.0
+        transaction = WalletTransaction(
+            restaurant_id=restaurant_id,
+            amount=-3.0,
+            type=TransactionType.DEBIT,
+            description=f"Order commission (Order #{new_order.id})"
+        )
+        db.add(transaction)
         
         await db.commit()
         await db.refresh(new_order)
