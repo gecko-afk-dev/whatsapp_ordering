@@ -7,6 +7,7 @@ from typing import Optional
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_manager_or_admin, User, UserRole
 from app.models import Category, MenuItem, ModifierGroup, ModifierOption
+from app.services.audit import log_audit_action
 
 router = APIRouter()
 
@@ -97,6 +98,16 @@ async def delete_category(cat_id: int, current_user: User = Depends(get_manager_
             raise HTTPException(status_code=404, detail="Category not found")
         await check_restaurant_access(db, current_user, cat.restaurant_id)
         
+        await log_audit_action(
+            db=db,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
+            action="CATEGORY_DELETED",
+            target=f"category_id={cat.id}",
+            detail={"category_name": cat.name_en},
+            restaurant_id=cat.restaurant_id
+        )
+        
         await db.delete(cat)
         await db.commit()
         return {"status": "deleted"}
@@ -135,6 +146,15 @@ async def delete_item(item_id: int, current_user: User = Depends(get_manager_or_
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         await check_restaurant_access(db, current_user, item.category.restaurant_id)
+        await log_audit_action(
+            db=db,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
+            action="MENU_ITEM_DELETED",
+            target=f"item_id={item.id}",
+            detail={"item_name": item.name_en, "category_id": item.category_id},
+            restaurant_id=item.category.restaurant_id
+        )
         
         await db.delete(item)
         await db.commit()
