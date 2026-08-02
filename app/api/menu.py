@@ -52,6 +52,20 @@ async def check_restaurant_access(db: AsyncSession, current_user: User, restaura
     if current_user.role == UserRole.RESTAURANT_OWNER and current_user.restaurant_id != restaurant_id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this menu")
 
+async def upload_image_to_cloud(image_data: Optional[str]) -> Optional[str]:
+    """
+    Placeholder utility for image uploads.
+    Currently accepts a Base64 string and returns a mock URL.
+    TODO: Integrate ImgBB or Cloudinary API here.
+    """
+    if not image_data:
+        return None
+    if image_data.startswith("http"):
+        return image_data
+    
+    # Mock upload logic (In real life, POST base64 to ImgBB and return response URL)
+    return "https://i.ibb.co/68037pG/placeholder-food.png"
+
 # --- Endpoints ---
 
 @router.get("/{restaurant_id}")
@@ -81,7 +95,7 @@ async def create_category(category: CategoryCreate, current_user: User = Depends
             name_en=category.name_en,
             name_ar=category.name_ar,
             name_fr=category.name_fr,
-            image_url=category.image_url
+            image_url=await upload_image_to_cloud(category.image_url)
         )
         db.add(new_cat)
         await db.commit()
@@ -129,7 +143,7 @@ async def create_item(item: MenuItemCreate, current_user: User = Depends(get_man
             name_fr=item.name_fr,
             price=item.price,
             item_details=item.item_details,
-            image_url=item.image_url,
+            image_url=await upload_image_to_cloud(item.image_url),
             allows_exclusions=item.allows_exclusions
         )
         db.add(new_item)
