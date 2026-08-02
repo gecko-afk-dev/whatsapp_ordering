@@ -131,6 +131,7 @@ class Category(Base):
     name_en: Mapped[str] = mapped_column(String(100))
     name_ar: Mapped[str] = mapped_column(String(100))
     name_fr: Mapped[str] = mapped_column(String(100))
+    image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     
     restaurant: Mapped["Restaurant"] = relationship(back_populates="categories")
     items: Mapped[List["MenuItem"]] = relationship(back_populates="category", cascade="all, delete-orphan")
@@ -146,6 +147,7 @@ class MenuItem(Base):
     price: Mapped[float] = mapped_column(Float)
     is_available: Mapped[bool] = mapped_column(default=True)
     item_details: Mapped[Optional[str]] = mapped_column(Text)  # Ingredients list
+    image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     allows_exclusions: Mapped[bool] = mapped_column(default=False)  # For items like sandwiches
     
     category: Mapped["Category"] = relationship(back_populates="items")

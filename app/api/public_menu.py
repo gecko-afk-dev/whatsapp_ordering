@@ -87,6 +87,7 @@ async def get_public_menu(restaurant_id: int):
                     "name_en": item.name_en,
                     "price": item.price,
                     "item_details": item.item_details,
+                    "image_url": item.image_url,
                     "allows_exclusions": item.allows_exclusions,
                     "modifier_groups": item_mod_groups
                 })
@@ -96,6 +97,7 @@ async def get_public_menu(restaurant_id: int):
                 "name_fr": cat.name_fr,
                 "name_ar": cat.name_ar,
                 "name_en": cat.name_en,
+                "image_url": cat.image_url,
                 "modifier_groups": cat_mod_groups,
                 "items": items_data
             })

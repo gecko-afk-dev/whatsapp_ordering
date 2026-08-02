@@ -16,6 +16,7 @@ class CategoryCreate(BaseModel):
     name_en: str
     name_ar: str
     name_fr: str
+    image_url: Optional[str] = None
     restaurant_id: Optional[int] = None # Admin needs to pass this, Manager doesn't
 
 class MenuItemCreate(BaseModel):
@@ -25,6 +26,7 @@ class MenuItemCreate(BaseModel):
     name_fr: str
     price: float
     item_details: Optional[str] = None
+    image_url: Optional[str] = None
     allows_exclusions: bool = False
 
 class ModifierGroupCreate(BaseModel):
@@ -77,7 +79,8 @@ async def create_category(category: CategoryCreate, current_user: User = Depends
             restaurant_id=target_res_id,
             name_en=category.name_en,
             name_ar=category.name_ar,
-            name_fr=category.name_fr
+            name_fr=category.name_fr,
+            image_url=category.image_url
         )
         db.add(new_cat)
         await db.commit()
@@ -115,6 +118,7 @@ async def create_item(item: MenuItemCreate, current_user: User = Depends(get_man
             name_fr=item.name_fr,
             price=item.price,
             item_details=item.item_details,
+            image_url=item.image_url,
             allows_exclusions=item.allows_exclusions
         )
         db.add(new_item)

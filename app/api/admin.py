@@ -145,12 +145,12 @@ async def login(request: LoginRequest, response: Response):
                 "restaurant_id": user.restaurant_id,
                 "requires_password_change": user.requires_password_change,
                 "feature_flags": {
-                    "overview": settings.FEATURE_OVERVIEW_ENABLED,
+                    "overview": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_OVERVIEW_ENABLED,
                     "orders": True,
                     "menu": True,
-                    "staff": settings.FEATURE_STAFF_ENABLED,
-                    "drivers": settings.FEATURE_DRIVERS_ENABLED,
-                    "audit_logs": settings.FEATURE_AUDIT_LOGS_ENABLED
+                    "staff": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_STAFF_ENABLED,
+                    "drivers": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_DRIVERS_ENABLED,
+                    "audit_logs": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_AUDIT_LOGS_ENABLED
                 }
             }
         )
@@ -180,12 +180,12 @@ async def get_current_session(current_user: User = Depends(get_current_user)):
         "restaurant_id": current_user.restaurant_id,
         "requires_password_change": current_user.requires_password_change,
         "feature_flags": {
-            "overview": settings.FEATURE_OVERVIEW_ENABLED,
+            "overview": True if current_user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_OVERVIEW_ENABLED,
             "orders": True,
             "menu": True,
-            "staff": settings.FEATURE_STAFF_ENABLED,
-            "drivers": settings.FEATURE_DRIVERS_ENABLED,
-            "audit_logs": settings.FEATURE_AUDIT_LOGS_ENABLED,
+            "staff": True if current_user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_STAFF_ENABLED,
+            "drivers": True if current_user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_DRIVERS_ENABLED,
+            "audit_logs": True if current_user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_AUDIT_LOGS_ENABLED,
         }
     }
 
@@ -510,7 +510,7 @@ async def adjust_billing(
             raise HTTPException(status_code=404, detail="Restaurant not found")
         
         try:
-            tx_type = TransactionType(request.type)
+            tx_type = TransactionType(request.type.lower())
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid transaction type")
             
