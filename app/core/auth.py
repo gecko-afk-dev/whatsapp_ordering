@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.models import User, UserRole
@@ -68,7 +68,7 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(User)
-            .options(selectinload(User.restaurant))
+            .options(joinedload(User.restaurant))
             .where(User.email == email)
         )
         user = result.scalar_one_or_none()

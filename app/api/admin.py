@@ -3,6 +3,7 @@ import os
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 from typing import List, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
@@ -107,7 +108,9 @@ async def login(request: LoginRequest, response: Response):
     """Login for admins and restaurant owners. Sets HTTP-only secure cookie with JWT."""
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(UserModel).where(UserModel.email == request.email)
+            select(UserModel)
+            .options(joinedload(UserModel.restaurant))
+            .where(UserModel.email == request.email)
         )
         user = result.scalar_one_or_none()
 
