@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from typing import Optional
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_manager_or_admin, User, UserRole
-from app.models import Category, MenuItem, ModifierGroup, ModifierOption
+from app.models import Category, MenuItem, ModifierGroup, ModifierOption, ModifierGroupType
 from app.services.audit import log_audit_action
 
 router = APIRouter()
@@ -45,6 +45,36 @@ class ModifierOptionCreate(BaseModel):
     name_ar: str
     name_fr: str
     price_override: float = 0.0
+
+class CategoryUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
+    name_fr: Optional[str] = None
+    image_url: Optional[str] = None
+
+class MenuItemUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
+    name_fr: Optional[str] = None
+    price: Optional[float] = None
+    item_details: Optional[str] = None
+    image_url: Optional[str] = None
+    is_available: Optional[bool] = None
+
+class ModifierGroupUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
+    name_fr: Optional[str] = None
+    min_selection: Optional[int] = None
+    max_selection: Optional[int] = None
+    group_type: Optional[str] = None
+
+class ModifierOptionUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
+    name_fr: Optional[str] = None
+    price_override: Optional[float] = None
+    is_available: Optional[bool] = None
 
 # --- Helper ---
 
@@ -284,3 +314,156 @@ async def delete_modifier_option(option_id: int, current_user: User = Depends(ge
         await db.delete(opt)
         await db.commit()
         return {"status": "deleted"}
+
+@router.put("/categories/{cat_id}")
+async def update_category(cat_id: int, data: CategoryUpdate, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt = select(Category).where(Category.id == cat_id)
+        res = await db.execute(stmt)
+        cat = res.scalar_one_or_none()
+        if not cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+        await check_restaurant_access(db, current_user, cat.restaurant_id)
+        
+        if data.name_en is not None: cat.name_en = data.name_en
+        if data.name_ar is not None: cat.name_ar = data.name_ar
+        if data.name_fr is not None: cat.name_fr = data.name_fr
+        if data.image_url is not None: cat.image_url = await upload_image_to_cloud(data.image_url)
+        
+        await db.commit()
+        await db.refresh(cat)
+        return cat
+
+@router.put("/items/{item_id}")
+async def update_item(item_id: int, data: MenuItemUpdate, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt = select(MenuItem).where(MenuItem.id == item_id).options(selectinload(MenuItem.category))
+        res = await db.execute(stmt)
+        item = res.scalar_one_or_none()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        await check_restaurant_access(db, current_user, item.category.restaurant_id)
+        
+        if data.name_en is not None: item.name_en = data.name_en
+        if data.name_ar is not None: item.name_ar = data.name_ar
+        if data.name_fr is not None: item.name_fr = data.name_fr
+        if data.price is not None: item.price = data.price
+        if data.item_details is not None: item.item_details = data.item_details
+        if data.image_url is not None: item.image_url = await upload_image_to_cloud(data.image_url)
+        if data.is_available is not None: item.is_available = data.is_available
+        
+        await db.commit()
+        await db.refresh(item)
+        return item
+
+@router.put("/modifiers/groups/{group_id}")
+async def update_modifier_group(group_id: int, data: ModifierGroupUpdate, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt = select(ModifierGroup).where(ModifierGroup.id == group_id).options(
+            selectinload(ModifierGroup.menu_item).selectinload(MenuItem.category),
+            selectinload(ModifierGroup.category)
+        )
+        res = await db.execute(stmt)
+        group = res.scalar_one_or_none()
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+        
+        res_id = group.menu_item.category.restaurant_id if group.menu_item else group.category.restaurant_id
+        await check_restaurant_access(db, current_user, res_id)
+        
+        if data.name_en is not None: group.name_en = data.name_en
+        if data.name_ar is not None: group.name_ar = data.name_ar
+        if data.name_fr is not None: group.name_fr = data.name_fr
+        if data.min_selection is not None: group.min_selection = data.min_selection
+        if data.max_selection is not None: group.max_selection = data.max_selection
+        if data.group_type is not None: group.group_type = ModifierGroupType(data.group_type)
+        
+        await db.commit()
+        await db.refresh(group)
+        return group
+
+@router.put("/modifiers/options/{opt_id}")
+async def update_modifier_option(opt_id: int, data: ModifierOptionUpdate, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt = select(ModifierOption).where(ModifierOption.id == opt_id).options(
+            selectinload(ModifierOption.group).selectinload(ModifierGroup.menu_item).selectinload(MenuItem.category),
+            selectinload(ModifierOption.group).selectinload(ModifierGroup.category)
+        )
+        res = await db.execute(stmt)
+        opt = res.scalar_one_or_none()
+        if not opt:
+            raise HTTPException(status_code=404, detail="Option not found")
+            
+        group = opt.group
+        res_id = group.menu_item.category.restaurant_id if group.menu_item else group.category.restaurant_id
+        await check_restaurant_access(db, current_user, res_id)
+        
+        if data.name_en is not None: opt.name_en = data.name_en
+        if data.name_ar is not None: opt.name_ar = data.name_ar
+        if data.name_fr is not None: opt.name_fr = data.name_fr
+        if data.price_override is not None: opt.price_override = data.price_override
+        if data.is_available is not None: opt.is_available = data.is_available
+        
+        await db.commit()
+        await db.refresh(opt)
+        return opt
+
+@router.post("/items/{target_id}/copy-modifiers/{source_id}")
+async def copy_modifiers(target_id: int, source_id: int, current_user: User = Depends(get_manager_or_admin)):
+    async with AsyncSessionLocal() as db:
+        stmt_target = select(MenuItem).where(MenuItem.id == target_id).options(
+            selectinload(MenuItem.category),
+            selectinload(MenuItem.modifier_groups)
+        )
+        res_target = await db.execute(stmt_target)
+        target_item = res_target.scalar_one_or_none()
+        
+        if not target_item:
+            raise HTTPException(status_code=404, detail="Target item not found")
+        await check_restaurant_access(db, current_user, target_item.category.restaurant_id)
+        
+        stmt_source = select(MenuItem).where(MenuItem.id == source_id).options(
+            selectinload(MenuItem.category),
+            selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options)
+        )
+        res_source = await db.execute(stmt_source)
+        source_item = res_source.scalar_one_or_none()
+        
+        if not source_item:
+            raise HTTPException(status_code=404, detail="Source item not found")
+        await check_restaurant_access(db, current_user, source_item.category.restaurant_id)
+        
+        # 1. Delete existing groups on target_item (overwrite logic)
+        for old_group in list(target_item.modifier_groups):
+            await db.delete(old_group)
+        
+        # Flush deletions
+        await db.flush()
+            
+        # 2. Clone source groups and options
+        for src_group in source_item.modifier_groups:
+            new_group = ModifierGroup(
+                menu_item_id=target_item.id,
+                name_en=src_group.name_en,
+                name_ar=src_group.name_ar,
+                name_fr=src_group.name_fr,
+                min_selection=src_group.min_selection,
+                max_selection=src_group.max_selection,
+                group_type=src_group.group_type
+            )
+            db.add(new_group)
+            await db.flush() # Need id for options
+            
+            for src_opt in src_group.options:
+                new_opt = ModifierOption(
+                    group_id=new_group.id,
+                    name_en=src_opt.name_en,
+                    name_ar=src_opt.name_ar,
+                    name_fr=src_opt.name_fr,
+                    price_override=src_opt.price_override,
+                    is_available=src_opt.is_available
+                )
+                db.add(new_opt)
+                
+        await db.commit()
+        return {"status": "success", "message": "Modifiers copied successfully"}
