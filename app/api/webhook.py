@@ -66,7 +66,7 @@ def generate_magic_link(wa_id: str, restaurant_id: int) -> str:
         "exp": datetime.utcnow() + timedelta(minutes=30)
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-    return f"https://menu.mygeqo.com/{restaurant_id}?session={token}"
+    return f"https://menu.mygeqo.com/menu/{restaurant_id}?session={token}"
 
 @router.get("/webhook")
 async def verify_webhook(request: Request):
