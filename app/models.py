@@ -168,8 +168,7 @@ class ModifierGroup(Base):
     name_fr: Mapped[str] = mapped_column(String(100))
     min_selection: Mapped[int] = mapped_column(default=0)
     max_selection: Mapped[int] = mapped_column(default=1)
-    group_type: Mapped[ModifierGroupType] = mapped_column(Enum(ModifierGroupType), default=ModifierGroupType.OPTIONAL)
-    
+group_type: Mapped[str] = mapped_column(String(20), default="optional")    
     menu_item: Mapped[Optional["MenuItem"]] = relationship(back_populates="modifier_groups")
     category: Mapped[Optional["Category"]] = relationship(back_populates="modifier_groups")
     options: Mapped[List["ModifierOption"]] = relationship(back_populates="group", cascade="all, delete-orphan")
