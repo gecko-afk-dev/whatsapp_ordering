@@ -68,7 +68,8 @@ app.add_middleware(
         "http://localhost:3000",
         "https://app.mygeqo.com",
         "https://mygeqo.com",
-        "https://www.mygeqo.com"
+        "https://www.mygeqo.com",
+        "https://menu.mygeqo.com"
     ],
     allow_credentials=True,
     allow_methods=["*"], # The "*" allows GET, POST, PUT, DELETE, and the crucial OPTIONS
