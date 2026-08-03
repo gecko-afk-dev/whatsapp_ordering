@@ -25,7 +25,7 @@ class FulfillmentMethod(PyEnum):
     DELIVERY = "delivery"
     PICKUP = "pickup"
 
-class ModifierGroupType(PyEnum):
+class ModifierGroupType(str, PyEnum):
     MANDATORY = "mandatory"
     OPTIONAL = "optional"
     EXCLUSION = "exclusion"
