@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from app.core.database import AsyncSessionLocal
-from app.models import Restaurant, RestaurantStatus, Category, MenuItem
+from app.models import Restaurant, RestaurantStatus, Category, MenuItem, ModifierGroup, ModifierOption
 
 router = APIRouter()
 
