@@ -32,6 +32,8 @@ async def get_public_menu(restaurant_id: int):
         categories = cat_query.scalars().unique().all()
         
         categories_data = []
+        all_items_flat = []
+        
         for cat in categories:
             # Serialize category-level modifier groups
             cat_mod_groups = []
@@ -82,6 +84,7 @@ async def get_public_menu(restaurant_id: int):
                 
                 items_data.append({
                     "id": item.id,
+                    "category_id": str(cat.id),
                     "name_fr": item.name_fr,
                     "name_ar": item.name_ar,
                     "name_en": item.name_en,
@@ -93,18 +96,18 @@ async def get_public_menu(restaurant_id: int):
                 })
             
             categories_data.append({
-                "id": cat.id,
+                "id": str(cat.id),
                 "name_fr": cat.name_fr,
                 "name_ar": cat.name_ar,
                 "name_en": cat.name_en,
                 "image_url": cat.image_url,
-                "modifier_groups": cat_mod_groups,
-                "items": items_data
+                "modifier_groups": cat_mod_groups
             })
+            all_items_flat.extend(items_data)
 
         return {
             "restaurant": {
-                "id": restaurant.id,
+                "id": str(restaurant.id),
                 "name": restaurant.name,
                 "latitude": restaurant.latitude,
                 "longitude": restaurant.longitude,
@@ -112,5 +115,6 @@ async def get_public_menu(restaurant_id: int):
                 "per_km_delivery_fee": restaurant.per_km_delivery_fee,
                 "max_delivery_radius_km": restaurant.max_delivery_radius_km
             },
-            "categories": categories_data
+            "categories": categories_data,
+            "items": all_items_flat
         }
