@@ -147,6 +147,7 @@ async def login(request: LoginRequest, response: Response):
                 "role": user.role.value,
                 "restaurant_id": user.restaurant_id,
                 "wallet_balance": user.restaurant.wallet_balance if user.restaurant else 0.0,
+                "is_accepting_orders": user.restaurant.is_accepting_orders if user.restaurant else False,
                 "requires_password_change": user.requires_password_change,
                 "feature_flags": {
                     "overview": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_OVERVIEW_ENABLED,
@@ -183,6 +184,7 @@ async def get_current_session(current_user: User = Depends(get_current_user)):
         "role": current_user.role.value,
         "restaurant_id": current_user.restaurant_id,
         "wallet_balance": current_user.restaurant.wallet_balance if current_user.restaurant else 0.0,
+        "is_accepting_orders": current_user.restaurant.is_accepting_orders if current_user.restaurant else False,
         "requires_password_change": current_user.requires_password_change,
         "feature_flags": {
             "overview": True if current_user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_OVERVIEW_ENABLED,
