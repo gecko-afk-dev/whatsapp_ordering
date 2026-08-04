@@ -171,38 +171,38 @@ class WhatsAppService:
             }
         )
 
-    async def send_order_status_notification(self, to_phone: str, lang: str, order_id: int, status: str, delivery_pin: str = None):
+    async def send_order_status_notification(self, to_phone: str, lang: str, tracking_code: str, status: str, delivery_pin: str = None, order_summary: str = None):
         """Sends translated status updates to the customer"""
         status_messages = {
             "accepted": {
-                "fr": f"✅ Votre commande #{order_id} a été acceptée et est en cours de préparation !",
-                "ar": f"✅ تم قبول طلبك رقم {order_id} وجاري تحضيره!",
-                "en": f"✅ Your order #{order_id} has been accepted and is being prepared!"
+                "fr": f"✅ Votre commande #{tracking_code} a été acceptée et est en cours de préparation !",
+                "ar": f"✅ تم قبول طلبك رقم {tracking_code} وجاري تحضيره!",
+                "en": f"✅ Your order #{tracking_code} has been accepted and is being prepared!"
             },
             "preparing": {
-                "fr": f"🍳 Le chef a commencé à préparer votre commande #{order_id} !",
-                "ar": f"🍳 بدأ الشيف في تحضير طلبك رقم {order_id}!",
-                "en": f"🍳 The chef has started preparing your order #{order_id}!"
+                "fr": f"🍳 Le chef a commencé à préparer votre commande #{tracking_code} !",
+                "ar": f"🍳 بدأ الشيف في تحضير طلبك رقم {tracking_code}!",
+                "en": f"🍳 The chef has started preparing your order #{tracking_code}!"
             },
             "ready": {
-                "fr": f"🛍️ Bonne nouvelle ! Votre commande #{order_id} est prête pour la récupération.",
-                "ar": f"🛍️ خبر سار! طلبك رقم {order_id} جاهز.",
-                "en": f"🛍️ Good news! Your order #{order_id} is ready."
+                "fr": f"🛍️ Bonne nouvelle ! Votre commande #{tracking_code} est prête pour la récupération.",
+                "ar": f"🛍️ خبر سار! طلبك رقم {tracking_code} جاهز.",
+                "en": f"🛍️ Good news! Your order #{tracking_code} is ready."
             },
             "dispatched": {
-                "fr": f"🛵 Votre commande #{order_id} est en route ! Notre livreur vous contactera.",
-                "ar": f"🛵 طلبك رقم {order_id} في الطريق إليك! سيتصل بك المندوب قريبًا.",
-                "en": f"🛵 Your order #{order_id} is on the way! Our driver will contact you."
+                "fr": f"🛵 Votre commande #{tracking_code} est en route ! Notre livreur vous contactera.",
+                "ar": f"🛵 طلبك رقم {tracking_code} في الطريق إليك! سيتصل بك المندوب قريبًا.",
+                "en": f"🛵 Your order #{tracking_code} is on the way! Our driver will contact you."
             },
             "delivered": {
-                "fr": f"🍽️ Votre commande #{order_id} a été livrée. Bon appétit !",
-                "ar": f"🍽️ تم توصيل طلبك رقم {order_id}. بالصحة والراحة!",
-                "en": f"🍽️ Your order #{order_id} has been delivered. Enjoy your meal!"
+                "fr": f"🍽️ Votre commande #{tracking_code} a été livrée. Bon appétit !",
+                "ar": f"🍽️ تم توصيل طلبك رقم {tracking_code}. بالصحة والراحة!",
+                "en": f"🍽️ Your order #{tracking_code} has been delivered. Enjoy your meal!"
             },
             "cancelled": {
-                "fr": f"❌ Désolé, votre commande #{order_id} a été annulée. Veuillez contacter le restaurant.",
-                "ar": f"❌ عذراً، تم إلغاء طلبك رقم {order_id}. يرجى التواصل مع المطعم.",
-                "en": f"❌ We're sorry, your order #{order_id} was cancelled. Please contact the restaurant."
+                "fr": f"❌ Désolé, votre commande #{tracking_code} a été annulée. Veuillez contacter le restaurant.",
+                "ar": f"❌ عذراً، تم إلغاء طلبك رقم {tracking_code}. يرجى التواصل مع المطعم.",
+                "en": f"❌ We're sorry, your order #{tracking_code} was cancelled. Please contact the restaurant."
             }
         }
 
@@ -217,6 +217,9 @@ class WhatsAppService:
         if delivery_pin and status in ["accepted", "dispatched"]:
             pin_text = f"\n\n🔑 Votre code PIN de livraison / رمز التوصيل الخاص بك / Your delivery PIN is: *{delivery_pin}*\nGardez-le pour confirmer la livraison. / احتفظ به لتأكيد التوصيل. / Keep it to confirm delivery."
             text += pin_text
+            
+        if order_summary and status == "accepted":
+            text += f"\n\n{order_summary}"
         
         await self.send_text_message(to_phone, text)
 

@@ -200,7 +200,7 @@ async def handle_events(request: Request):
                                 
                                 # Notify customer
                                 cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "dispatched")
+                                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "dispatched")
                                 
                                 # Notify driver
                                 await wa_service._post({
@@ -341,7 +341,7 @@ async def handle_events(request: Request):
                             order.status = OrderStatus.PREPARING
                             await db.commit()
                             cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "preparing")
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "preparing")
                             
                             # Give manager next step
                             if order.fulfillment_method == FulfillmentMethod.DELIVERY:
@@ -384,7 +384,7 @@ async def handle_events(request: Request):
                             order.status = OrderStatus.CANCELLED
                             await db.commit()
                             cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "cancelled")
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "cancelled")
                             await wa_service.send_text_message(wa_id, f"Order #{order_id} has been rejected.")
                         return Response(status_code=200)
 
@@ -396,7 +396,7 @@ async def handle_events(request: Request):
                             order.status = OrderStatus.READY
                             await db.commit()
                             cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "ready")
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "ready")
                             await wa_service.send_text_message(wa_id, f"Order #{order_id} marked as Ready.")
                         return Response(status_code=200)
 
@@ -438,7 +438,7 @@ async def handle_events(request: Request):
                             await db.commit()
                             
                             cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "delivered")
+                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "delivered")
                             await wa_service.send_text_message(wa_id, f"✅ Order #{order.id} marked as Delivered! Great job.")
                             
                             # Notify manager

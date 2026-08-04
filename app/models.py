@@ -1,6 +1,11 @@
 from __future__ import annotations
 from datetime import datetime
 from enum import Enum as PyEnum
+import secrets
+import string
+
+def generate_tracking_code():
+    return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
 from typing import List, Optional
 from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -188,6 +193,7 @@ class ModifierOption(Base):
 class Order(Base):
     __tablename__ = "orders"
     id: Mapped[int] = mapped_column(primary_key=True)
+    tracking_code: Mapped[str] = mapped_column(String(20), unique=True, index=True, default=generate_tracking_code)
     restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), index=True)
     customer_wa_id: Mapped[str] = mapped_column(String(20), index=True)
     fulfillment_method: Mapped[FulfillmentMethod] = mapped_column(Enum(FulfillmentMethod))

@@ -260,13 +260,13 @@ async def process_flow_request(payload: dict):
                 # Notify Customer
                 cust_req = await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))
                 cust_lang = cust_req.scalar_one_or_none() or "fr"
-                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.id, "delivered")
+                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "delivered")
                 
                 # Thank you message to customer
                 thank_you_map = {
-                    "fr": f"🙏 Merci pour votre commande #{order.id} ! À très bientôt.",
-                    "ar": f"🙏 شكراً لطلبك رقم {order.id}! نراكم قريباً.",
-                    "en": f"🙏 Thank you for your order #{order.id}! See you soon."
+                    "fr": f"🙏 Merci pour votre commande #{order.tracking_code} ! À très bientôt.",
+                    "ar": f"🙏 شكراً لطلبك رقم {order.tracking_code}! نراكم قريباً.",
+                    "en": f"🙏 Thank you for your order #{order.tracking_code}! See you soon."
                 }
                 await wa_service.send_text_message(order.customer_wa_id, thank_you_map[cust_lang])
                 

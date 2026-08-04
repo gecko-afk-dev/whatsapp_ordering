@@ -7,10 +7,10 @@ from app.models import Category, ModifierGroup, Order, OrderItem, OrderItemExclu
 class OrderService:
     @staticmethod
     async def generate_delivery_pin(db: AsyncSession) -> str:
-        """Generate a globally unique 6-character alphanumeric PIN."""
-        characters = string.ascii_uppercase + string.digits
+        """Generate a globally unique 4-digit numeric PIN."""
+        characters = string.digits
         while True:
-            pin = ''.join(secrets.choice(characters) for _ in range(6))
+            pin = ''.join(secrets.choice(characters) for _ in range(4))
             res = await db.execute(select(Order).where(Order.delivery_pin == pin))
             if not res.scalar_one_or_none():
                 return pin
@@ -155,17 +155,30 @@ class OrderService:
         We initialize a specific WhatsAppService instance per restaurant.
         """
         from app.services.whatsapp import WhatsAppService
+        from app.core.database import AsyncSessionLocal
+        from sqlalchemy.future import select
+        from sqlalchemy.orm import selectinload
 
-        ws = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
-        # If accepted/dispatched and there's a delivery pin, include it in the status notification
-        # For brevity, let's say the whatsapp service will fetch the order again if needed, or we just pass it
-        await ws.send_order_status_notification(
-            to_phone=customer_wa_id,
-            lang=customer_lang,
-            order_id=order_id,
-            status=status,
-            delivery_pin=delivery_pin
-        )
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(Order).where(Order.id == order_id).options(
+                selectinload(Order.items).selectinload(OrderItem.menu_item)
+            ))
+            order = res.scalar_one_or_none()
+            if not order: return
+
+            summary = None
+            if status == "accepted" and order.items:
+                summary = "📋 *Order Summary:*\n" + "\n".join([f"- {item.quantity}x {item.menu_item.name_en}" for item in order.items if item.menu_item])
+                
+            ws = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
+            await ws.send_order_status_notification(
+                to_phone=customer_wa_id,
+                lang=customer_lang,
+                tracking_code=order.tracking_code,
+                status=status,
+                delivery_pin=delivery_pin,
+                order_summary=summary
+            )
 
     @staticmethod
     async def notify_driver_dispatch_background(

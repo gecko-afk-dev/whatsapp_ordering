@@ -25,8 +25,7 @@ async def get_public_menu(restaurant_id: int):
             select(Category)
             .where(Category.restaurant_id == restaurant_id)
             .options(
-                selectinload(Category.items).selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options),
-                selectinload(Category.modifier_groups).selectinload(ModifierGroup.options)
+                selectinload(Category.items).selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options)
             )
         )
         categories = cat_query.scalars().unique().all()
@@ -35,27 +34,6 @@ async def get_public_menu(restaurant_id: int):
         all_items_flat = []
         
         for cat in categories:
-            # Serialize category-level modifier groups
-            cat_mod_groups = []
-            for group in cat.modifier_groups:
-                cat_mod_groups.append({
-                    "id": group.id,
-                    "name_fr": group.name_fr,
-                    "name_ar": group.name_ar,
-                    "name_en": group.name_en,
-                    "min_selection": group.min_selection,
-                    "max_selection": group.max_selection,
-                    "options": [
-                        {
-                            "id": opt.id,
-                            "name_fr": opt.name_fr,
-                            "name_ar": opt.name_ar,
-                            "name_en": opt.name_en,
-                            "price_override": opt.price_override
-                        } for opt in group.options
-                    ]
-                })
-
             items_data = []
             for item in cat.items:
                 if not item.is_available:
@@ -100,8 +78,7 @@ async def get_public_menu(restaurant_id: int):
                 "name_fr": cat.name_fr,
                 "name_ar": cat.name_ar,
                 "name_en": cat.name_en,
-                "image_url": cat.image_url,
-                "modifier_groups": cat_mod_groups
+                "image_url": cat.image_url
             })
             all_items_flat.extend(items_data)
 
