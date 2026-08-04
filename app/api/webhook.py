@@ -65,8 +65,22 @@ def generate_magic_link(wa_id: str, restaurant_id: int) -> str:
         "iat": datetime.utcnow(),
         "exp": datetime.utcnow() + timedelta(minutes=30)
     }
+    from app.core.config import settings
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
     return f"https://menu.mygeqo.com/menu/{restaurant_id}?session={token}"
+
+async def check_and_send_magic_link(wa_service, wa_id: str, customer, restaurant) -> bool:
+    if not restaurant.is_accepting_orders:
+        lang = customer.language if customer and customer.language else "fr"
+        msg_en = f"Sorry, {restaurant.name} is currently closed and not accepting orders right now. Please try again later!"
+        msg_fr = f"Désolé, {restaurant.name} est actuellement fermé et n'accepte pas de commandes pour le moment. Veuillez réessayer plus tard !"
+        msg_ar = f"عذراً، {restaurant.name} مغلق حالياً ولا يستقبل الطلبات في الوقت الحالي. يرجى المحاولة مرة أخرى لاحقاً!"
+        closed_msg = msg_en if lang == "en" else msg_ar if lang == "ar" else msg_fr
+        await wa_service.send_text_message(wa_id, closed_msg)
+        return False
+    magic_link = generate_magic_link(wa_id, restaurant.id)
+    await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
+    return True
 
 @router.get("/webhook")
 async def verify_webhook(request: Request):
@@ -246,8 +260,7 @@ async def handle_events(request: Request):
                         "ar" if "ar" in sel_id else "fr" if "fr" in sel_id else "en"
                     )
                     await db.commit()
-                    magic_link = generate_magic_link(wa_id, restaurant.id)
-                    await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
+                    await check_and_send_magic_link(wa_service, wa_id, customer, restaurant)
                 else:
                     await wa_service.send_language_picker(wa_id)
                 return Response(status_code=200)
@@ -255,8 +268,7 @@ async def handle_events(request: Request):
             # Customer exists with language set
 
             if m_type == "text":
-                magic_link = generate_magic_link(wa_id, restaurant.id)
-                await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
+                await check_and_send_magic_link(wa_service, wa_id, customer, restaurant)
                 return Response(status_code=200)
 
             elif m_type == "interactive":
@@ -329,8 +341,7 @@ async def handle_events(request: Request):
                         return Response(status_code=200)
 
                     elif btn_id == "change_order":
-                        magic_link = generate_magic_link(wa_id, restaurant.id)
-                        await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
+                        await check_and_send_magic_link(wa_service, wa_id, customer, restaurant)
                         return Response(status_code=200)
 
                     elif btn_id.startswith("mgr_accept_"):
@@ -471,8 +482,7 @@ async def handle_events(request: Request):
                         return Response(status_code=200)
 
                     else:
-                        magic_link = generate_magic_link(wa_id, restaurant.id)
-                        await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
+                        await check_and_send_magic_link(wa_service, wa_id, customer, restaurant)
                         return Response(status_code=200)
 
             elif m_type == "location":
@@ -495,8 +505,7 @@ async def handle_events(request: Request):
                 return Response(status_code=200)
 
             # Fallback for unhandled message types
-            magic_link = generate_magic_link(wa_id, restaurant.id)
-            await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
+            await check_and_send_magic_link(wa_service, wa_id, customer, restaurant)
             return Response(status_code=200)
 
     except json.JSONDecodeError:

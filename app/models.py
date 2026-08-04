@@ -117,6 +117,7 @@ class Restaurant(Base):
     commission_rate: Mapped[float] = mapped_column(Float, default=0.20)  # 20%
     wallet_balance: Mapped[float] = mapped_column(Float, default=0.0)
     address: Mapped[Optional[str]] = mapped_column(String(255))
+    city: Mapped[Optional[str]] = mapped_column(String(100))
     cuisine_type: Mapped[Optional[str]] = mapped_column(String(50))
     operating_hours: Mapped[Optional[str]] = mapped_column(Text)  # JSON string
     contact_email: Mapped[Optional[str]] = mapped_column(String(100))

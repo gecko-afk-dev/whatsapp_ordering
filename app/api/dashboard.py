@@ -82,6 +82,7 @@ class DeliverySettingsUpdate(BaseModel):
     base_delivery_fee: float
     per_km_delivery_fee: float
     operating_hours: Optional[str] = None
+    city: Optional[str] = None
 
 class RestaurantStatusUpdate(BaseModel):
     is_accepting_orders: bool
@@ -376,6 +377,8 @@ async def update_delivery_settings(
         restaurant.per_km_delivery_fee = payload.per_km_delivery_fee
         if payload.operating_hours is not None:
             restaurant.operating_hours = payload.operating_hours
+        if payload.city is not None:
+            restaurant.city = payload.city
         
         await db.commit()
         return {"status": "success"}

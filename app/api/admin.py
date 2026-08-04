@@ -38,6 +38,7 @@ class RestaurantCreate(BaseModel):
     phone_number_id: str
     owner_wa_id: str
     address: Optional[str] = None
+    city: Optional[str] = None
     cuisine_type: Optional[str] = None
     contact_email: EmailStr
     commission_rate: float = 0.20
@@ -49,6 +50,7 @@ class RestaurantUpdate(BaseModel):
     phone_number_id: Optional[str] = None
     owner_wa_id: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
     cuisine_type: Optional[str] = None
     contact_email: Optional[EmailStr] = None
     commission_rate: Optional[float] = None
@@ -415,6 +417,7 @@ async def create_restaurant(
             phone_number_id=restaurant.phone_number_id,
             owner_wa_id=restaurant.owner_wa_id,
             address=restaurant.address,
+            city=restaurant.city,
             cuisine_type=restaurant.cuisine_type,
             contact_email=restaurant.contact_email,
             commission_rate=restaurant.commission_rate
@@ -460,6 +463,7 @@ async def list_restaurants(current_user: User = Depends(get_current_admin)):
             "phone_number_id": r.phone_number_id,
             "owner_wa_id": r.owner_wa_id,
             "address": r.address,
+            "city": r.city,
             "cuisine_type": r.cuisine_type,
             "status": r.status.value,
             "payment_status": r.payment_status.value,
