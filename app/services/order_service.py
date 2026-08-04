@@ -7,10 +7,10 @@ from app.models import Category, ModifierGroup, Order, OrderItem, OrderItemExclu
 class OrderService:
     @staticmethod
     async def generate_delivery_pin(db: AsyncSession) -> str:
-        """Generate a globally unique 4-digit numeric PIN."""
+        """Generate a globally unique 6-digit numeric PIN."""
         characters = string.digits
         while True:
-            pin = ''.join(secrets.choice(characters) for _ in range(4))
+            pin = ''.join(secrets.choice(characters) for _ in range(6))
             res = await db.execute(select(Order).where(Order.delivery_pin == pin))
             if not res.scalar_one_or_none():
                 return pin

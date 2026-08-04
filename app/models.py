@@ -5,7 +5,7 @@ import secrets
 import string
 
 def generate_tracking_code():
-    return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+    return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 from typing import List, Optional
 from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -112,6 +112,7 @@ class Restaurant(Base):
 
     # New fields for Phase 1
     status: Mapped[RestaurantStatus] = mapped_column(Enum(RestaurantStatus), default=RestaurantStatus.ACTIVE)
+    is_accepting_orders: Mapped[bool] = mapped_column(default=True)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PAID)
     commission_rate: Mapped[float] = mapped_column(Float, default=0.20)  # 20%
     wallet_balance: Mapped[float] = mapped_column(Float, default=0.0)

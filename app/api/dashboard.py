@@ -56,6 +56,7 @@ class OrderItemSchema(BaseModel):
 
 class OrderSchema(BaseModel):
     id: int
+    tracking_code: str
     restaurant_id: int
     customer_wa_id: str
     fulfillment_method: str
@@ -80,6 +81,9 @@ class DeliverySettingsUpdate(BaseModel):
     max_delivery_radius_km: float
     base_delivery_fee: float
     per_km_delivery_fee: float
+
+class RestaurantStatusUpdate(BaseModel):
+    is_accepting_orders: bool
 
 
 # ---------------------------------------------------------------------------
@@ -372,3 +376,25 @@ async def update_delivery_settings(
         
         await db.commit()
         return {"status": "success"}
+
+@router.put("/restaurant/status")
+async def update_restaurant_status(
+    payload: RestaurantStatusUpdate,
+    current_user: User = Depends(get_current_kitchen_or_above)
+):
+    """Toggle if restaurant is accepting orders. Requires Owner or Admin."""
+    if current_user.role not in [UserRole.RESTAURANT_OWNER, UserRole.ADMIN]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned")
+        
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(select(Restaurant).where(Restaurant.id == current_user.restaurant_id))
+        restaurant = res.scalar_one_or_none()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+            
+        restaurant.is_accepting_orders = payload.is_accepting_orders
+        
+        await db.commit()
+        return {"status": "success", "is_accepting_orders": restaurant.is_accepting_orders}

@@ -650,6 +650,7 @@ async def get_restaurant_dashboard(current_user: User = Depends(get_current_cash
                 "id": restaurant.id,
                 "name": restaurant.name,
                 "status": restaurant.status.value,
+                "is_accepting_orders": restaurant.is_accepting_orders,
                 "payment_status": restaurant.payment_status.value,
                 "wallet_balance": restaurant.wallet_balance,
                 "latitude": restaurant.latitude,

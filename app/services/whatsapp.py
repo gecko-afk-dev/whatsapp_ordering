@@ -215,8 +215,12 @@ class WhatsAppService:
         text = status_messages[status][customer_lang]
         
         if delivery_pin and status in ["accepted", "dispatched"]:
-            pin_text = f"\n\n🔑 Votre code PIN de livraison / رمز التوصيل الخاص بك / Your delivery PIN is: *{delivery_pin}*\nGardez-le pour confirmer la livraison. / احتفظ به لتأكيد التوصيل. / Keep it to confirm delivery."
-            text += pin_text
+            pin_messages = {
+                "fr": f"\n\n🔑 Votre code PIN de livraison est : *{delivery_pin}*\nGardez-le pour confirmer la livraison.",
+                "ar": f"\n\n🔑 رمز التوصيل الخاص بك هو: *{delivery_pin}*\nاحتفظ به لتأكيد التوصيل.",
+                "en": f"\n\n🔑 Your delivery PIN is: *{delivery_pin}*\nKeep it to confirm delivery."
+            }
+            text += pin_messages[customer_lang]
             
         if order_summary and status == "accepted":
             text += f"\n\n{order_summary}"

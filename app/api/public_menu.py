@@ -36,8 +36,7 @@ async def get_public_menu(restaurant_id: int):
         for cat in categories:
             items_data = []
             for item in cat.items:
-                if not item.is_available:
-                    continue
+                
                 
                 # Serialize item-level modifier groups
                 item_mod_groups = []
@@ -69,6 +68,7 @@ async def get_public_menu(restaurant_id: int):
                     "price": item.price,
                     "item_details": item.item_details,
                     "image_url": item.image_url,
+                    "is_available": item.is_available,
                     "allows_exclusions": item.allows_exclusions,
                     "modifier_groups": item_mod_groups
                 })
@@ -90,7 +90,8 @@ async def get_public_menu(restaurant_id: int):
                 "longitude": restaurant.longitude,
                 "base_delivery_fee": restaurant.base_delivery_fee,
                 "per_km_delivery_fee": restaurant.per_km_delivery_fee,
-                "max_delivery_radius_km": restaurant.max_delivery_radius_km
+                "max_delivery_radius_km": restaurant.max_delivery_radius_km,
+                "is_accepting_orders": restaurant.is_accepting_orders
             },
             "categories": categories_data,
             "items": all_items_flat
