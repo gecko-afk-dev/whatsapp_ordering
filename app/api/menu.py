@@ -38,6 +38,7 @@ class ModifierGroupCreate(BaseModel):
     name_fr: str
     min_selection: int = 0
     max_selection: int = 1
+    group_type: Optional[str] = "optional"
 
 class ModifierOptionCreate(BaseModel):
     group_id: int
@@ -232,7 +233,8 @@ async def create_modifier_group(group: ModifierGroupCreate, current_user: User =
             name_ar=group.name_ar,
             name_fr=group.name_fr,
             min_selection=group.min_selection,
-            max_selection=group.max_selection
+            max_selection=group.max_selection,
+            group_type=group.group_type
         )
         db.add(new_group)
         await db.commit()
@@ -376,7 +378,7 @@ async def update_modifier_group(group_id: int, data: ModifierGroupUpdate, curren
         if data.name_fr is not None: group.name_fr = data.name_fr
         if data.min_selection is not None: group.min_selection = data.min_selection
         if data.max_selection is not None: group.max_selection = data.max_selection
-        if data.group_type is not None: group.group_type = ModifierGroupType(data.group_type)
+        if data.group_type is not None: group.group_type = data.group_type
         
         await db.commit()
         await db.refresh(group)
