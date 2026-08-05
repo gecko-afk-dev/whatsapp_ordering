@@ -250,8 +250,26 @@ async def process_flow_request(payload: dict):
                 if not driver or driver.id != order.driver_id:
                     return {"version": "3.0", "screen": "ERROR_SCREEN", "data": {"error_message": "Unauthorized driver."}}
                 
-                # Success
+                # Success — FIX-7: Write audit log for delivery confirmation
                 order.status = OrderStatus.DELIVERED
+                
+                from app.services.audit import log_audit_action
+                await log_audit_action(
+                    db=db,
+                    actor_user_id=driver.id,  # driver as actor
+                    actor_email=f"driver:{driver.wa_id}",
+                    action="ORDER_DELIVERED",
+                    target=f"order_id={order.id}",
+                    detail={
+                        "tracking_code": order.tracking_code,
+                        "driver_id": driver.id,
+                        "driver_name": driver.name,
+                        "driver_wa_id": driver.wa_id,
+                        "pin_verified": True
+                    },
+                    restaurant_id=restaurant.id
+                )
+                
                 await db.commit()
                 
                 # Notify Dashboard

@@ -1,6 +1,7 @@
 import math
 import logging
 from typing import List, Optional
+from collections import Counter
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 from sqlalchemy.future import select
@@ -9,7 +10,8 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Restaurant, Order, OrderItem, OrderItemExclusion, OrderItemModifier,
-    MenuItem, Category, ModifierOption, ModifierGroup, OrderStatus, FulfillmentMethod, Customer
+    MenuItem, Category, ModifierOption, ModifierGroup, OrderStatus, FulfillmentMethod, Customer,
+    WalletTransaction, TransactionType
 )
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
@@ -64,15 +66,31 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         raise HTTPException(status_code=400, detail="Cart cannot be empty")
 
     async with AsyncSessionLocal() as db:
-        res = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+        # FIX-1: Atomic row-lock to prevent wallet race condition on concurrent checkouts
+        res = await db.execute(
+            select(Restaurant)
+            .where(Restaurant.id == restaurant_id)
+            .with_for_update()
+        )
         restaurant = res.scalar_one_or_none()
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
 
+        # FIX-4: Gate — reject checkout if store closed mid-session
+        if not restaurant.is_accepting_orders:
+            raise HTTPException(status_code=400, detail="This restaurant is currently closed and not accepting orders. Please try again later.")
+
         # 1. Geo-Fencing & Delivery Fee Calculation
         delivery_fee = 0.0
         if payload.fulfillment_method == "delivery":
-            if restaurant.latitude and restaurant.longitude and payload.latitude and payload.longitude:
+            # FIX-5: Reject delivery orders with missing GPS instead of silently defaulting to Casablanca
+            if not payload.latitude or not payload.longitude:
+                raise HTTPException(status_code=400, detail="Location is required for delivery orders. Please enable GPS and try again.")
+
+            if not restaurant.latitude or not restaurant.longitude:
+                # Restaurant hasn't configured its own GPS — fallback to base fee only
+                delivery_fee = restaurant.base_delivery_fee
+            else:
                 dist = calculate_haversine_distance(
                     restaurant.latitude, restaurant.longitude,
                     payload.latitude, payload.longitude
@@ -81,10 +99,6 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                     raise HTTPException(status_code=400, detail=f"Location is outside our delivery radius (Max: {restaurant.max_delivery_radius_km} km)")
                 
                 delivery_fee = restaurant.base_delivery_fee + (dist * restaurant.per_km_delivery_fee)
-            else:
-                # If restaurant hasn't configured GPS, or client blocked GPS, fallback to base fee or reject.
-                # Assuming base fee fallback if customer coords are missing.
-                delivery_fee = restaurant.base_delivery_fee
 
         # 2. Server-side Pricing
         method = FulfillmentMethod.DELIVERY if payload.fulfillment_method == "delivery" else FulfillmentMethod.PICKUP
@@ -134,7 +148,10 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
             for exc in req_item.exclusions:
                 db.add(OrderItemExclusion(order_item_id=order_line.id, ingredient_name=exc))
 
-            # Modifiers
+            # Modifiers — with server-side constraint validation
+            # FIX-2 & FIX-3: Validate modifier availability AND enforce min/max selection
+            group_selection_counts = Counter()  # {group_id: count}
+
             for mod_id in req_item.modifier_option_ids:
                 mod_q = await db.execute(
                     select(ModifierOption)
@@ -144,11 +161,32 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                     .where(ModifierOption.id == mod_id, Category.restaurant_id == restaurant_id)
                 )
                 mod_opt = mod_q.scalar_one_or_none()
-                if not mod_opt:
-                    raise HTTPException(status_code=400, detail=f"Invalid modifier {mod_id}")
+                # FIX-3: Block unavailable modifier options
+                if not mod_opt or not mod_opt.is_available:
+                    raise HTTPException(status_code=400, detail=f"Modifier option {mod_id} is unavailable")
                 
+                group_selection_counts[mod_opt.group_id] += 1
                 db.add(OrderItemModifier(order_item_id=order_line.id, modifier_option_id=mod_id))
                 line_price += mod_opt.price_override
+
+            # FIX-2: Enforce modifier group min/max selection bounds
+            # Also check mandatory groups that received zero selections
+            item_groups_q = await db.execute(
+                select(ModifierGroup).where(ModifierGroup.menu_item_id == menu_item.id)
+            )
+            item_groups = item_groups_q.scalars().all()
+            for grp in item_groups:
+                count = group_selection_counts.get(grp.id, 0)
+                if count < grp.min_selection:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Modifier group '{grp.name_en}' requires at least {grp.min_selection} selection(s), got {count}"
+                    )
+                if count > grp.max_selection:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Modifier group '{grp.name_en}' allows at most {grp.max_selection} selection(s), got {count}"
+                    )
 
             order_line.unit_price = line_price
             item_total += (line_price * req_item.quantity)
@@ -158,11 +196,11 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         new_order.delivery_pin = await OrderService.generate_delivery_pin(db)
         
         # Enforce Grace Period
+        # FIX-6: Return a human-readable localized error instead of the raw "ERROR_SCREEN" string
         if restaurant.wallet_balance <= -75.0:
-            raise HTTPException(status_code=400, detail="ERROR_SCREEN")
+            raise HTTPException(status_code=400, detail="The restaurant is currently unable to accept orders. Please try again later.")
             
-        # Deduct from Prepaid Wallet
-        from app.models import WalletTransaction, TransactionType
+        # Deduct from Prepaid Wallet (row already locked by .with_for_update() above)
         restaurant.wallet_balance -= 3.0
         transaction = WalletTransaction(
             restaurant_id=restaurant_id,
