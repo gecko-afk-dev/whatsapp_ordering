@@ -90,20 +90,24 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
 
             if not restaurant.latitude or not restaurant.longitude:
                 # Restaurant hasn't configured its own GPS — fallback to base fee only
-                delivery_fee = float(restaurant.base_delivery_fee)
+                delivery_fee = round(float(restaurant.base_delivery_fee), 2)
+                distance_km = 0.0
             else:
-                dist = float(calculate_haversine_distance(
+                distance_km = round(float(calculate_haversine_distance(
                     float(restaurant.latitude), float(restaurant.longitude),
                     float(payload.latitude), float(payload.longitude)
-                ))
-                if dist > float(restaurant.max_delivery_radius_km):
+                )), 4)
+                if distance_km > float(restaurant.max_delivery_radius_km):
                     raise HTTPException(status_code=400, detail=f"Location is outside our delivery radius (Max: {restaurant.max_delivery_radius_km} km)")
-                
-                delivery_fee = float(restaurant.base_delivery_fee) + (dist * float(restaurant.per_km_delivery_fee))
+
+                base_fee = round(float(restaurant.base_delivery_fee), 2)
+                per_km_fee = round(float(restaurant.per_km_delivery_fee), 2)
+                delivery_fee = round(base_fee + (distance_km * per_km_fee), 2)
 
         # 2. Server-side Pricing
         method = FulfillmentMethod.DELIVERY if payload.fulfillment_method == "delivery" else FulfillmentMethod.PICKUP
-        
+        cart_total = 0.0
+
         new_order = Order(
             restaurant_id=restaurant_id,
             customer_wa_id=wa_id,
@@ -119,7 +123,6 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         db.add(new_order)
         await db.flush()
 
-        item_total = 0.0
         for req_item in payload.items:
             if req_item.quantity < 1:
                 raise HTTPException(status_code=400, detail="Item quantity must be at least 1")
@@ -141,12 +144,14 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                 order_id=new_order.id,
                 menu_item_id=menu_item.id,
                 quantity=req_item.quantity,
-                unit_price=float(menu_item.price)
+                unit_price=round(float(menu_item.price), 2)
             )
             db.add(order_line)
             await db.flush()
-            
-            line_price = float(menu_item.price)
+
+            # Line price starts at base item price
+            line_price = round(float(menu_item.price), 2)
+            modifier_total = 0.0
 
             # Exclusions
             for exc in req_item.exclusions:
@@ -173,7 +178,7 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                 
                 group_selection_counts[group_id] += 1
                 db.add(OrderItemModifier(order_item_id=order_line.id, modifier_option_id=mod_id))
-                line_price += float(mod_opt.price_override)
+                modifier_total += round(float(mod_opt.price_override), 2)
 
             # FIX-2: Enforce modifier group min/max selection bounds
             # Also check mandatory groups that received zero selections
@@ -191,11 +196,25 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                         detail=f"Modifier group '{grp.name_en}' allows at most {grp.max_selection} selection(s), got {count}"
                     )
 
+            modifier_total = round(modifier_total, 2)
+            line_price = round(line_price + modifier_total, 2)
+            line_total = round(line_price * int(req_item.quantity), 2)
             order_line.unit_price = line_price
-            item_total += (line_price * int(req_item.quantity))
+            cart_total = round(cart_total + line_total, 2)
 
         # 3. Finalize Totals & Delivery PIN
-        new_order.total_price = float(item_total) + float(delivery_fee)
+        final_total = round(cart_total + delivery_fee, 2)
+
+        # X-RAY LOGGING: Inspect all pricing components before committing
+        logger.info(
+            f"MATH X-RAY | order_id_pending | "
+            f"Cart: {cart_total} MAD | "
+            f"Dist(km): {distance_km if payload.fulfillment_method == 'delivery' else 'N/A (pickup)'} | "
+            f"Del Fee: {delivery_fee} MAD | "
+            f"Final: {final_total} MAD"
+        )
+
+        new_order.total_price = final_total
         new_order.delivery_pin = await OrderService.generate_delivery_pin(db)
         
         # Enforce Grace Period
