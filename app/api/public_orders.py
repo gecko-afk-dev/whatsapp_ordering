@@ -90,16 +90,16 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
 
             if not restaurant.latitude or not restaurant.longitude:
                 # Restaurant hasn't configured its own GPS — fallback to base fee only
-                delivery_fee = restaurant.base_delivery_fee
+                delivery_fee = float(restaurant.base_delivery_fee)
             else:
-                dist = calculate_haversine_distance(
-                    restaurant.latitude, restaurant.longitude,
-                    payload.latitude, payload.longitude
-                )
-                if dist > restaurant.max_delivery_radius_km:
+                dist = float(calculate_haversine_distance(
+                    float(restaurant.latitude), float(restaurant.longitude),
+                    float(payload.latitude), float(payload.longitude)
+                ))
+                if dist > float(restaurant.max_delivery_radius_km):
                     raise HTTPException(status_code=400, detail=f"Location is outside our delivery radius (Max: {restaurant.max_delivery_radius_km} km)")
                 
-                delivery_fee = restaurant.base_delivery_fee + (dist * restaurant.per_km_delivery_fee)
+                delivery_fee = float(restaurant.base_delivery_fee) + (dist * float(restaurant.per_km_delivery_fee))
 
         # 2. Server-side Pricing
         method = FulfillmentMethod.DELIVERY if payload.fulfillment_method == "delivery" else FulfillmentMethod.PICKUP
@@ -141,12 +141,12 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                 order_id=new_order.id,
                 menu_item_id=menu_item.id,
                 quantity=req_item.quantity,
-                unit_price=menu_item.price
+                unit_price=float(menu_item.price)
             )
             db.add(order_line)
             await db.flush()
             
-            line_price = menu_item.price
+            line_price = float(menu_item.price)
 
             # Exclusions
             for exc in req_item.exclusions:
@@ -173,7 +173,7 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                 
                 group_selection_counts[group_id] += 1
                 db.add(OrderItemModifier(order_item_id=order_line.id, modifier_option_id=mod_id))
-                line_price += mod_opt.price_override
+                line_price += float(mod_opt.price_override)
 
             # FIX-2: Enforce modifier group min/max selection bounds
             # Also check mandatory groups that received zero selections
@@ -192,10 +192,10 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                     )
 
             order_line.unit_price = line_price
-            item_total += (line_price * req_item.quantity)
+            item_total += (line_price * int(req_item.quantity))
 
         # 3. Finalize Totals & Delivery PIN
-        new_order.total_price = item_total + delivery_fee
+        new_order.total_price = float(item_total) + float(delivery_fee)
         new_order.delivery_pin = await OrderService.generate_delivery_pin(db)
         
         # Enforce Grace Period

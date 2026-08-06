@@ -11,7 +11,7 @@ from app.core.auth import (
     SECRET_KEY, ALGORITHM, get_current_cashier_or_above, get_current_kitchen_or_above,
     assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier, ModifierOption, OrderItemExclusion
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
@@ -33,6 +33,30 @@ class MenuItemCompactSchema(BaseModel):
     class Config:
         from_attributes = True
 
+class ModifierOptionCompactSchema(BaseModel):
+    id: int
+    name_en: str
+    name_fr: str
+    name_ar: str
+
+    class Config:
+        from_attributes = True
+
+class OrderItemModifierSchema(BaseModel):
+    id: int
+    modifier_option_id: int
+    modifier_option: Optional[ModifierOptionCompactSchema] = None
+
+    class Config:
+        from_attributes = True
+
+class OrderItemExclusionSchema(BaseModel):
+    id: int
+    ingredient_name: str
+
+    class Config:
+        from_attributes = True
+
 class OrderItemSchema(BaseModel):
     id: int
     menu_item_id: int
@@ -42,8 +66,8 @@ class OrderItemSchema(BaseModel):
     name_fr: Optional[str] = None
     name_ar: Optional[str] = None
     menu_item: Optional[MenuItemCompactSchema] = None
-    exclusions: List[Any] = []
-    modifiers: List[Any] = []
+    exclusions: List[OrderItemExclusionSchema] = []
+    modifiers: List[OrderItemModifierSchema] = []
 
     class Config:
         from_attributes = True
