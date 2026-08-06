@@ -11,7 +11,7 @@ from app.core.auth import (
     SECRET_KEY, ALGORITHM, get_current_cashier_or_above, get_current_kitchen_or_above,
     assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
