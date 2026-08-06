@@ -673,19 +673,23 @@ async def get_restaurant_dashboard(current_user: User = Depends(get_current_cash
         )
         pending_orders = pending_orders_result.scalars().all()
 
+        from app.services.hours import is_restaurant_open
         return {
             "restaurant": {
                 "id": restaurant.id,
                 "name": restaurant.name,
                 "status": restaurant.status.value,
                 "is_accepting_orders": restaurant.is_accepting_orders,
+                "is_open": is_restaurant_open(restaurant),
                 "payment_status": restaurant.payment_status.value,
                 "wallet_balance": restaurant.wallet_balance,
                 "latitude": restaurant.latitude,
                 "longitude": restaurant.longitude,
                 "max_delivery_radius_km": restaurant.max_delivery_radius_km,
                 "base_delivery_fee": restaurant.base_delivery_fee,
-                "per_km_delivery_fee": restaurant.per_km_delivery_fee
+                "per_km_delivery_fee": restaurant.per_km_delivery_fee,
+                "operating_hours": restaurant.operating_hours,
+                "city": restaurant.city,
             },
             "today_stats": {
                 "orders": today_orders,

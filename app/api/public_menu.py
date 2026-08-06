@@ -3,6 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from app.core.database import AsyncSessionLocal
 from app.models import Restaurant, RestaurantStatus, Category, MenuItem, ModifierGroup, ModifierOption
+from app.services.hours import is_restaurant_open
 
 router = APIRouter()
 
@@ -95,7 +96,10 @@ async def get_public_menu(restaurant_identifier: str):
                 "base_delivery_fee": restaurant.base_delivery_fee,
                 "per_km_delivery_fee": restaurant.per_km_delivery_fee,
                 "max_delivery_radius_km": restaurant.max_delivery_radius_km,
-                "is_accepting_orders": restaurant.is_accepting_orders
+                # is_accepting_orders = raw manual toggle;
+                # is_open = computed: manual toggle AND operating hours check
+                "is_accepting_orders": restaurant.is_accepting_orders,
+                "is_open": is_restaurant_open(restaurant),
             },
             "categories": categories_data,
             "items": all_items_flat

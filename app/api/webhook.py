@@ -73,14 +73,36 @@ def generate_magic_link(wa_id: str, restaurant) -> str:
     return f"https://menu.mygeqo.com/menu/{restaurant.id}?session={token}"
 
 async def check_and_send_magic_link(wa_service, wa_id: str, customer, restaurant) -> bool:
-    if not restaurant.is_accepting_orders:
-        lang = customer.language if customer and customer.language else "fr"
-        msg_en = f"Sorry, {restaurant.name} is currently closed and not accepting orders right now. Please try again later!"
-        msg_fr = f"Désolé, {restaurant.name} est actuellement fermé et n'accepte pas de commandes pour le moment. Veuillez réessayer plus tard !"
-        msg_ar = f"عذراً، {restaurant.name} مغلق حالياً ولا يستقبل الطلبات في الوقت الحالي. يرجى المحاولة مرة أخرى لاحقاً!"
+    from app.services.hours import is_restaurant_open
+    lang = customer.language if customer and customer.language else "fr"
+
+    if not is_restaurant_open(restaurant):
+        # Build a human-readable hours summary for the closed message
+        hours_hint = ""
+        if restaurant.operating_hours:
+            try:
+                import json
+                schedule = json.loads(restaurant.operating_hours)
+                open_days = [d["day"][:3] for d in schedule if d.get("isOpen")]
+                if open_days:
+                    # Get today's window if available
+                    import pytz
+                    from datetime import datetime as _dt
+                    tz = pytz.timezone("Africa/Casablanca")
+                    today_name = _dt.now(tz).strftime("%A")
+                    today_entry = next((d for d in schedule if d.get("day", "").lower() == today_name.lower()), None)
+                    if today_entry and today_entry.get("isOpen"):
+                        hours_hint = f" ({today_entry['open']} - {today_entry['close']})"
+            except Exception:
+                pass
+
+        msg_fr = f"Désolé, {restaurant.name} est actuellement fermé{hours_hint}. Veuillez réessayer pendant nos heures d'ouverture !"
+        msg_ar = f"عذراً، {restaurant.name} مغلق حالياً{hours_hint}. يرجى المحاولة خلال ساعات العمل!"
+        msg_en = f"Sorry, {restaurant.name} is currently closed{hours_hint}. Please try again during our opening hours!"
         closed_msg = msg_en if lang == "en" else msg_ar if lang == "ar" else msg_fr
         await wa_service.send_text_message(wa_id, closed_msg)
         return False
+
     magic_link = generate_magic_link(wa_id, restaurant)
     await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
     return True

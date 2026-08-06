@@ -17,6 +17,7 @@ from app.models import (
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
 from app.services.order_service import OrderService
+from app.services.hours import is_restaurant_open
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,8 +78,8 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         if not restaurant:
             raise HTTPException(status_code=404, detail="Restaurant not found")
 
-        # FIX-4: Gate — reject checkout if store closed mid-session
-        if not restaurant.is_accepting_orders:
+        # Gate — reject checkout if store is closed (manual override OR outside operating hours)
+        if not is_restaurant_open(restaurant):
             raise HTTPException(status_code=400, detail="This restaurant is currently closed and not accepting orders. Please try again later.")
 
         # 1. Geo-Fencing & Delivery Fee Calculation
