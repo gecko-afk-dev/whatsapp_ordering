@@ -5,6 +5,7 @@ from collections import Counter
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 from jose import JWTError, jwt
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -128,6 +129,9 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
                 select(MenuItem)
                 .join(Category)
                 .where(MenuItem.id == req_item.menu_item_id, Category.restaurant_id == restaurant_id)
+                .options(
+                    selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options)
+                )
             )
             menu_item = item_q.scalar_one_or_none()
             if not menu_item or not menu_item.is_available:
@@ -171,10 +175,7 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
 
             # FIX-2: Enforce modifier group min/max selection bounds
             # Also check mandatory groups that received zero selections
-            item_groups_q = await db.execute(
-                select(ModifierGroup).where(ModifierGroup.menu_item_id == menu_item.id)
-            )
-            item_groups = item_groups_q.scalars().all()
+            item_groups = menu_item.modifier_groups
             for grp in item_groups:
                 count = group_selection_counts.get(grp.id, 0)
                 if count < grp.min_selection:
