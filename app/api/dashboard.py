@@ -20,8 +20,18 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Pydantic response schemas
 # ---------------------------------------------------------------------------
+from typing import Any
+
+class MenuItemCompactSchema(BaseModel):
+    name_en: str
+    name_fr: str
+    name_ar: str
+
+    class Config:
+        from_attributes = True
 
 class OrderItemSchema(BaseModel):
     id: int
@@ -31,6 +41,9 @@ class OrderItemSchema(BaseModel):
     name_en: Optional[str] = None
     name_fr: Optional[str] = None
     name_ar: Optional[str] = None
+    menu_item: Optional[MenuItemCompactSchema] = None
+    exclusions: List[Any] = []
+    modifiers: List[Any] = []
 
     class Config:
         from_attributes = True
@@ -193,7 +206,11 @@ async def get_active_orders(
                     ]
                 )
             )
-            .options(joinedload(Order.items).joinedload(OrderItem.menu_item))
+            .options(
+                joinedload(Order.items).joinedload(OrderItem.menu_item),
+                joinedload(Order.items).joinedload(OrderItem.modifiers).joinedload(OrderItemModifier.modifier_option),
+                joinedload(Order.items).joinedload(OrderItem.exclusions)
+            )
             .order_by(Order.created_at.desc())
         )
         orders = query.scalars().unique().all()
