@@ -36,7 +36,7 @@ class CartItemPayload(BaseModel):
     menu_item_id: int
     quantity: int
     exclusions: Optional[List[str]] = []
-    modifier_option_ids: Optional[List[int]] = []
+    modifiers: Optional[List[int]] = []
 
 class CheckoutPayload(BaseModel):
     fulfillment_method: str  # "delivery" or "pickup"
@@ -156,20 +156,22 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
             # FIX-2 & FIX-3: Validate modifier availability AND enforce min/max selection
             group_selection_counts = Counter()  # {group_id: count}
 
-            for mod_id in req_item.modifier_option_ids:
-                mod_q = await db.execute(
-                    select(ModifierOption)
-                    .join(ModifierGroup)
-                    .join(MenuItem, MenuItem.id == ModifierGroup.menu_item_id)
-                    .join(Category)
-                    .where(ModifierOption.id == mod_id, Category.restaurant_id == restaurant_id)
-                )
-                mod_opt = mod_q.scalar_one_or_none()
+            valid_options = {}
+            for grp in menu_item.modifier_groups:
+                for opt in grp.options:
+                    valid_options[opt.id] = (opt, grp.id)
+
+            for mod_id in req_item.modifiers:
+                if mod_id not in valid_options:
+                    raise HTTPException(status_code=400, detail=f"Modifier option {mod_id} is invalid for this item")
+                
+                mod_opt, group_id = valid_options[mod_id]
+                
                 # FIX-3: Block unavailable modifier options
-                if not mod_opt or not mod_opt.is_available:
+                if not mod_opt.is_available:
                     raise HTTPException(status_code=400, detail=f"Modifier option {mod_id} is unavailable")
                 
-                group_selection_counts[mod_opt.group_id] += 1
+                group_selection_counts[group_id] += 1
                 db.add(OrderItemModifier(order_item_id=order_line.id, modifier_option_id=mod_id))
                 line_price += mod_opt.price_override
 
