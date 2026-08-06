@@ -33,6 +33,7 @@ class TokenResponse(BaseModel):
 
 class RestaurantCreate(BaseModel):
     name: str
+    slug: Optional[str] = None  # Auto-generated from name if omitted
     wa_phone_number: str
     api_token: Optional[str] = None  # If omitted, the platform master token is used
     phone_number_id: str
@@ -45,6 +46,7 @@ class RestaurantCreate(BaseModel):
 
 class RestaurantUpdate(BaseModel):
     name: Optional[str] = None
+    slug: Optional[str] = None
     wa_phone_number: Optional[str] = None
     api_token: Optional[str] = None
     phone_number_id: Optional[str] = None
@@ -410,8 +412,28 @@ async def create_restaurant(
                 detail="Phone number already registered"
             )
 
+        import re
+        def _make_slug(name: str) -> str:
+            s = name.lower().strip()
+            s = re.sub(r'[^\w\s-]', '', s)
+            s = re.sub(r'[\s_]+', '-', s)
+            return re.sub(r'-+', '-', s).strip('-')
+
+        slug = restaurant.slug or _make_slug(restaurant.name)
+
+        # Ensure slug is unique — append suffix if needed
+        base_slug = slug
+        suffix = 1
+        while True:
+            slug_check = await db.execute(select(Restaurant).where(Restaurant.slug == slug))
+            if not slug_check.scalar_one_or_none():
+                break
+            slug = f"{base_slug}-{suffix}"
+            suffix += 1
+
         new_restaurant = Restaurant(
             name=restaurant.name,
+            slug=slug,
             wa_phone_number=restaurant.wa_phone_number,
             api_token=restaurant.api_token or settings.WHATSAPP_API_TOKEN,
             phone_number_id=restaurant.phone_number_id,

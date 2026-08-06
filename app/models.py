@@ -98,6 +98,7 @@ class Restaurant(Base):
     __tablename__ = "restaurants"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
+    slug: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)
     wa_phone_number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     api_token: Mapped[str] = mapped_column(Text)
     phone_number_id: Mapped[str] = mapped_column(String(50))

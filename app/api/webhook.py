@@ -58,16 +58,19 @@ def verify_webhook_signature(request: Request, raw_body: bytes) -> bool:
         logger.warning("Invalid webhook signature. Possible spoofing attack.")
     return valid
 
-def generate_magic_link(wa_id: str, restaurant_id: int) -> str:
+def generate_magic_link(wa_id: str, restaurant) -> str:
     payload = {
         "sub": wa_id,
-        "rid": restaurant_id,
+        "rid": restaurant.id,
         "iat": datetime.utcnow(),
         "exp": datetime.utcnow() + timedelta(minutes=30)
     }
     from app.core.config import settings
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-    return f"https://menu.mygeqo.com/menu/{restaurant_id}?session={token}"
+    # Use white-label subdomain if slug is set, fall back to legacy URL
+    if restaurant.slug:
+        return f"https://{restaurant.slug}.mygeqo.com/?session={token}"
+    return f"https://menu.mygeqo.com/menu/{restaurant.id}?session={token}"
 
 async def check_and_send_magic_link(wa_service, wa_id: str, customer, restaurant) -> bool:
     if not restaurant.is_accepting_orders:
@@ -78,7 +81,7 @@ async def check_and_send_magic_link(wa_service, wa_id: str, customer, restaurant
         closed_msg = msg_en if lang == "en" else msg_ar if lang == "ar" else msg_fr
         await wa_service.send_text_message(wa_id, closed_msg)
         return False
-    magic_link = generate_magic_link(wa_id, restaurant.id)
+    magic_link = generate_magic_link(wa_id, restaurant)
     await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
     return True
 

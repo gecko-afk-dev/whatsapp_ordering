@@ -6,15 +6,19 @@ from app.models import Restaurant, RestaurantStatus, Category, MenuItem, Modifie
 
 router = APIRouter()
 
-@router.get("/menu/{restaurant_id}")
-async def get_public_menu(restaurant_id: int):
+@router.get("/menu/{restaurant_identifier}")
+async def get_public_menu(restaurant_identifier: str):
     """
     Fetch the public menu for a restaurant.
     Includes categories, items, and modifier groups/options.
     """
     async with AsyncSessionLocal() as db:
         # Check if restaurant exists and is active
-        res = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+        if restaurant_identifier.isdigit():
+            res = await db.execute(select(Restaurant).where(Restaurant.id == int(restaurant_identifier)))
+        else:
+            res = await db.execute(select(Restaurant).where(Restaurant.slug == restaurant_identifier))
+            
         restaurant = res.scalar_one_or_none()
         if not restaurant or restaurant.status != RestaurantStatus.ACTIVE:
             raise HTTPException(status_code=404, detail="Restaurant not found or inactive")
@@ -23,7 +27,7 @@ async def get_public_menu(restaurant_id: int):
         from sqlalchemy.orm import selectinload
         cat_query = await db.execute(
             select(Category)
-            .where(Category.restaurant_id == restaurant_id)
+            .where(Category.restaurant_id == restaurant.id)
             .options(
                 selectinload(Category.items).selectinload(MenuItem.modifier_groups).selectinload(ModifierGroup.options)
             )
