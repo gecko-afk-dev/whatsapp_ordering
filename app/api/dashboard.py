@@ -1,3 +1,5 @@
+import random
+import string
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body, BackgroundTasks, Query, Depends
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -278,44 +280,62 @@ async def update_order_status(
             restaurant_id=order.restaurant_id
         )
 
-        # Generate delivery PIN if accepting a delivery order
-        if body.new_status == OrderStatus.ACCEPTED and order.fulfillment_method == FulfillmentMethod.DELIVERY and not order.delivery_pin:
+        # ── Handle driver dispatch logic ──
+        if body.new_status == OrderStatus.DISPATCHED:
+            # Step 1: Require a driver for dispatch
+            if not body.driver_id:
+                raise HTTPException(status_code=400, detail="A driver must be assigned before dispatching.")
+
+            driver_res = await db.execute(select(Driver).where(Driver.id == body.driver_id))
+            driver = driver_res.scalar_one_or_none()
+            if not driver or driver.restaurant_id != order.restaurant_id:
+                raise HTTPException(status_code=400, detail="Invalid driver")
+            order.driver_id = body.driver_id
+
+            # Step 2: Generate strict 6-digit numeric PIN
+            order.delivery_pin = "".join(random.choices(string.digits, k=6))
+
+            # Step 3: Re-fetch customer (already fetched above but ensure we have full object)
+            if not customer:
+                raise HTTPException(status_code=400, detail="Customer record not found for this order.")
+
+            restaurant = order.restaurant
+            if restaurant and restaurant.api_token and restaurant.phone_number_id:
+                # Step 4: Trilingual customer message with PIN
+                pin_msg = {
+                    "fr": (
+                        f"🛵 Bonne nouvelle ! Le livreur *{driver.name}* est en route !\n"
+                        f"Pour recevoir votre commande, donnez ce code PIN au livreur : *{order.delivery_pin}*"
+                    ),
+                    "ar": (
+                        f"🛵 خبر سار! السائق *{driver.name}* في الطريق إليك!\n"
+                        f"لاستلام طلبك، أعطِ السائق رمز PIN هذا: *{order.delivery_pin}*"
+                    ),
+                    "en": (
+                        f"🛵 Good news! Driver *{driver.name}* is on the way!\n"
+                        f"To receive your order, please give the driver this secure PIN: *{order.delivery_pin}*"
+                    ),
+                }.get(customer_lang, "fr")
+
+                background_tasks.add_task(
+                    _dispatch_notifications_background,
+                    restaurant_token=restaurant.api_token,
+                    restaurant_phone_id=restaurant.phone_number_id,
+                    customer_wa_id=order.customer_wa_id,
+                    customer_pin_msg=pin_msg,
+                    driver_wa_id=driver.wa_id,
+                    order_id=order.id,
+                    order_tracking_code=order.tracking_code,
+                    order_total_price=order.total_price,
+                    order_latitude=order.latitude,
+                    order_longitude=order.longitude,
+                    customer_wa_id_for_driver=order.customer_wa_id,
+                )
+
+        # ── Generate delivery PIN on ACCEPTED for non-dispatch flow (legacy) ──
+        elif body.new_status == OrderStatus.ACCEPTED and order.fulfillment_method == FulfillmentMethod.DELIVERY and not order.delivery_pin:
             order.delivery_pin = await OrderService.generate_delivery_pin(db)
 
-        # Handle driver dispatch logic
-        if body.new_status == OrderStatus.DISPATCHED:
-            restaurant = order.restaurant
-            if body.driver_id:
-                # Direct Assignment
-                driver_res = await db.execute(select(Driver).where(Driver.id == body.driver_id))
-                driver = driver_res.scalar_one_or_none()
-                if not driver or driver.restaurant_id != order.restaurant_id:
-                    raise HTTPException(status_code=400, detail="Invalid driver")
-                order.driver_id = body.driver_id
-                
-                if restaurant and restaurant.api_token and restaurant.phone_number_id:
-                    background_tasks.add_task(
-                        OrderService.notify_driver_dispatch_background,
-                        restaurant_token=restaurant.api_token,
-                        restaurant_phone_id=restaurant.phone_number_id,
-                        driver_wa_id=driver.wa_id,
-                        order_id=order.id,
-                        latitude=order.latitude or 0.0,
-                        longitude=order.longitude or 0.0
-                    )
-            else:
-                # Broadcast
-                order.driver_id = None
-                if restaurant and restaurant.api_token and restaurant.phone_number_id:
-                    background_tasks.add_task(
-                        OrderService.notify_drivers_broadcast_background,
-                        db=None,
-                        restaurant_token=restaurant.api_token,
-                        restaurant_phone_id=restaurant.phone_number_id,
-                        restaurant_id=restaurant.id,
-                        order_id=order.id
-                    )
-        
         # Update order status
         order.status = body.new_status
         await db.commit()
@@ -331,24 +351,82 @@ async def update_order_status(
             },
         )
 
-        # Trigger WhatsApp notification in the background
-        restaurant = order.restaurant
-        if restaurant and restaurant.api_token and restaurant.phone_number_id:
-            background_tasks.add_task(
-                OrderService.notify_customer_background,
-                restaurant_token=restaurant.api_token,
-                restaurant_phone_id=restaurant.phone_number_id,
-                customer_wa_id=order.customer_wa_id,
-                customer_lang=customer_lang,
-                order_id=order.id,
-                status=new_status_val,
-                delivery_pin=order.delivery_pin
-            )
+        # Trigger generic status WhatsApp notification (skipped for DISPATCHED — handled above with PIN)
+        if body.new_status != OrderStatus.DISPATCHED:
+            restaurant = order.restaurant
+            if restaurant and restaurant.api_token and restaurant.phone_number_id:
+                background_tasks.add_task(
+                    OrderService.notify_customer_background,
+                    restaurant_token=restaurant.api_token,
+                    restaurant_phone_id=restaurant.phone_number_id,
+                    customer_wa_id=order.customer_wa_id,
+                    customer_lang=customer_lang,
+                    order_id=order.id,
+                    status=new_status_val,
+                    delivery_pin=order.delivery_pin
+                )
 
         return {"status": "updated", "new_status": new_status_val}
 
 
+async def _dispatch_notifications_background(
+    restaurant_token: str,
+    restaurant_phone_id: str,
+    customer_wa_id: str,
+    customer_pin_msg: str,
+    driver_wa_id: str,
+    order_id: int,
+    order_tracking_code: str,
+    order_total_price: float,
+    order_latitude: float | None,
+    order_longitude: float | None,
+    customer_wa_id_for_driver: str,
+):
+    """
+    Runs in the background after a DISPATCHED status update.
+    Sends:
+      1. A plain-text PIN message to the customer.
+      2. A WhatsApp Flow dispatch card to the driver.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from app.services.whatsapp import WhatsAppService
+
+    wa = WhatsAppService(token=restaurant_token, phone_id=restaurant_phone_id)
+
+    # --- 1. Customer PIN message ---
+    try:
+        await wa.send_text_message(customer_wa_id, customer_pin_msg)
+    except Exception as e:
+        logger.error("[Dispatch] Failed to send customer PIN message: %s", e)
+
+    # --- 2. Driver dispatch Flow ---
+    # Build a lightweight data container for the service call
+    class _OrderStub:
+        def __init__(self):
+            self.id = order_id
+            self.tracking_code = order_tracking_code
+            self.total_price = order_total_price
+            self.latitude = order_latitude
+            self.longitude = order_longitude
+
+    class _CustomerStub:
+        def __init__(self):
+            self.wa_id = customer_wa_id_for_driver
+
+    try:
+        await wa.send_driver_dispatch_message(
+            to_phone=driver_wa_id,
+            order=_OrderStub(),
+            customer=_CustomerStub(),
+        )
+    except Exception as e:
+        logger.error("[Dispatch] Failed to send driver dispatch Flow: %s", e)
+
+
 @router.post("/items/{item_id}/toggle-availability")
+
 async def toggle_item_availability(
     item_id: int,
     current_user: User = Depends(get_current_cashier_or_above),

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     PHONE_NUMBER_ID: str
     WHATSAPP_VERIFY_TOKEN: str
     WHATSAPP_FLOW_ID: str
+    DRIVER_FLOW_ID: str  # Flow ID for the Driver PIN Verification Flow
     WHATSAPP_APP_SECRET: str
     SECRET_KEY: str
     ALLOWED_ORIGINS: str = ""  # Default empty; must be set in production

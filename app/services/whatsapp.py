@@ -296,3 +296,50 @@ class WhatsAppService:
                 },
             }
         )
+
+    async def send_driver_dispatch_message(self, to_phone: str, order, customer):
+        """
+        Sends a WhatsApp Flow dispatch card to the driver.
+        Includes the order summary, collection amount, customer wa.me link,
+        and a Google Maps deep link. The CTA opens the PIN Verification Flow.
+        """
+        # Build the body text with native WhatsApp hyperlinks
+        location_line = ""
+        if order.latitude and order.longitude:
+            location_line = f"\n📍 *Location:* https://maps.google.com/?q={order.latitude},{order.longitude}"
+
+        body_text = (
+            f"🚨 *NEW DELIVERY: #{order.tracking_code}*\n"
+            f"💰 *Collect:* {order.total_price:.2f} MAD\n"
+            f"\n📞 *Customer:* wa.me/{customer.wa_id}"
+            f"{location_line}"
+        )
+
+        flow_token = f"driver_{order.id}_{to_phone}"
+
+        await self._post(
+            {
+                "messaging_product": "whatsapp",
+                "to": to_phone,
+                "type": "interactive",
+                "interactive": {
+                    "type": "flow",
+                    "header": {"type": "text", "text": f"🛵 Delivery #{order.tracking_code}"},
+                    "body": {"text": body_text},
+                    "action": {
+                        "name": "flow",
+                        "parameters": {
+                            "flow_message_version": "3",
+                            "flow_token": flow_token,
+                            "flow_id": settings.DRIVER_FLOW_ID,
+                            "flow_cta": "Verify PIN",
+                            "flow_action": "navigate",
+                            "flow_action_payload": {
+                                "screen": "CONFIRM_DELIVERY_SCREEN",
+                                "data": {"order_id": order.tracking_code},
+                            },
+                        },
+                    },
+                },
+            }
+        )
