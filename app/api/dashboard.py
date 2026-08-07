@@ -229,6 +229,7 @@ async def get_active_orders(
                         OrderStatus.ACCEPTED,
                         OrderStatus.PREPARING,
                         OrderStatus.READY,
+                        OrderStatus.DISPATCHED,
                     ]
                 )
             )
@@ -332,9 +333,7 @@ async def update_order_status(
                     customer_wa_id_for_driver=order.customer_wa_id,
                 )
 
-        # ── Generate delivery PIN on ACCEPTED for non-dispatch flow (legacy) ──
-        elif body.new_status == OrderStatus.ACCEPTED and order.fulfillment_method == FulfillmentMethod.DELIVERY and not order.delivery_pin:
-            order.delivery_pin = await OrderService.generate_delivery_pin(db)
+        # ── No PIN is generated on ACCEPTED. PIN is generated exclusively on DISPATCHED. ──
 
         # Update order status
         order.status = body.new_status

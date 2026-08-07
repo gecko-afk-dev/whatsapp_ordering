@@ -303,6 +303,9 @@ class WhatsAppService:
         Includes the order summary, collection amount, customer wa.me link,
         and a Google Maps deep link. The CTA opens the PIN Verification Flow.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Build the body text with native WhatsApp hyperlinks
         location_line = ""
         if order.latitude and order.longitude:
@@ -317,29 +320,38 @@ class WhatsAppService:
 
         flow_token = f"driver_{order.id}_{to_phone}"
 
-        await self._post(
-            {
-                "messaging_product": "whatsapp",
-                "to": to_phone,
-                "type": "interactive",
-                "interactive": {
-                    "type": "flow",
-                    "header": {"type": "text", "text": f"🛵 Delivery #{order.tracking_code}"},
-                    "body": {"text": body_text},
-                    "action": {
-                        "name": "flow",
-                        "parameters": {
-                            "flow_message_version": "3",
-                            "flow_token": flow_token,
-                            "flow_id": settings.DRIVER_FLOW_ID,
-                            "flow_cta": "Verify PIN",
-                            "flow_action": "navigate",
-                            "flow_action_payload": {
-                                "screen": "CONFIRM_DELIVERY_SCREEN",
-                                "data": {"order_id": order.tracking_code},
+        try:
+            await self._post(
+                {
+                    "messaging_product": "whatsapp",
+                    "to": to_phone,
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "flow",
+                        "header": {"type": "text", "text": f"🛵 Delivery #{order.tracking_code}"},
+                        "body": {"text": body_text},
+                        "action": {
+                            "name": "flow",
+                            "parameters": {
+                                "flow_message_version": "3",
+                                "flow_token": flow_token,
+                                "flow_id": settings.DRIVER_FLOW_ID,
+                                "flow_cta": "Verify PIN",
+                                "flow_action": "navigate",
+                                "flow_action_payload": {
+                                    "screen": "CONFIRM_DELIVERY_SCREEN",
+                                    "data": {"order_id": order.tracking_code},
+                                },
                             },
                         },
                     },
-                },
-            }
-        )
+                }
+            )
+        except Exception as e:
+            # Log the full Meta error response body to diagnose 24h rule violations or payload errors
+            response_body = getattr(getattr(e, "response", None), "text", str(e))
+            logger.error(
+                "[send_driver_dispatch_message] Meta API rejected driver dispatch to %s | order=%s | error: %s",
+                to_phone, order.tracking_code, response_body
+            )
+            raise
