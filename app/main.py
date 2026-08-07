@@ -71,6 +71,7 @@ app.add_middleware(
         "https://www.mygeqo.com",
         "https://menu.mygeqo.com"
     ],
+    allow_origin_regex=r"https://.*\.mygeqo\.com",
     allow_credentials=True,
     allow_methods=["*"], # The "*" allows GET, POST, PUT, DELETE, and the crucial OPTIONS
     allow_headers=["*"], # The "*" ensures Axios can send tokens without being blocked
