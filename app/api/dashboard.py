@@ -119,7 +119,7 @@ class DeliverySettingsUpdate(BaseModel):
     longitude: float
     max_delivery_radius_km: float
     base_delivery_fee: float
-    per_km_delivery_fee: float
+    per_km_delivery_fee: Optional[float] = 0.0
     operating_hours: Optional[str] = None
     city: Optional[str] = None
 
