@@ -3,7 +3,7 @@ import string
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body, BackgroundTasks, Query, Depends
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -93,6 +93,23 @@ class OrderItemSchema(BaseModel):
         return data
 
 
+class DriverSchema(BaseModel):
+    id: int
+    name: str
+    phone_number: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CustomerSchema(BaseModel):
+    id: int
+    whatsapp_id: str
+    name: str
+    phone_number: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 class OrderSchema(BaseModel):
     id: int
     tracking_code: str
@@ -101,10 +118,15 @@ class OrderSchema(BaseModel):
     fulfillment_method: str
     status: str
     total_price: float
-    latitude: Optional[float]
-    longitude: Optional[float]
+    delivery_fee: Optional[float] = 0.0
+    delivery_pin: Optional[str] = None
+    customer_notes: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     created_at: datetime
     items: List[OrderItemSchema] = []
+    driver: Optional[DriverSchema] = None
+    customer: Optional[CustomerSchema] = None
 
     class Config:
         from_attributes = True
