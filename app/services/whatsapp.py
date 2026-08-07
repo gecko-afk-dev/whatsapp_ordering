@@ -214,7 +214,7 @@ class WhatsAppService:
         customer_lang = lang if lang in ["fr", "ar", "en"] else "fr"
         text = status_messages[status][customer_lang]
         
-        if delivery_pin and status in ["accepted", "dispatched"]:
+        if delivery_pin and status == "dispatched":
             pin_messages = {
                 "fr": f"\n\n🔑 Votre code PIN de livraison est : *{delivery_pin}*\nGardez-le pour confirmer la livraison.",
                 "ar": f"\n\n🔑 رمز التوصيل الخاص بك هو: *{delivery_pin}*\nاحتفظ به لتأكيد التوصيل.",

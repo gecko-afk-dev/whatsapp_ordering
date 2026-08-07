@@ -229,7 +229,6 @@ async def get_active_orders(
                         OrderStatus.ACCEPTED,
                         OrderStatus.PREPARING,
                         OrderStatus.READY,
-                        OrderStatus.DISPATCHED,
                     ]
                 )
             )
@@ -237,6 +236,39 @@ async def get_active_orders(
                 joinedload(Order.items).joinedload(OrderItem.menu_item),
                 joinedload(Order.items).joinedload(OrderItem.modifiers).joinedload(OrderItemModifier.modifier_option),
                 joinedload(Order.items).joinedload(OrderItem.exclusions)
+            )
+            .order_by(Order.created_at.desc())
+        )
+        orders = query.scalars().unique().all()
+        return orders
+
+
+@router.get("/deliveries/{restaurant_id}", response_model=List[OrderSchema])
+async def get_deliveries(
+    restaurant_id: int,
+    current_user: User = Depends(get_current_kitchen_or_above)
+):
+    """Returns dispatched and recently delivered orders for the logistics board."""
+    from datetime import datetime, timedelta
+    
+    assert_restaurant_access(current_user, restaurant_id)
+    async with AsyncSessionLocal() as db:
+        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+        
+        query = await db.execute(
+            select(Order)
+            .where(Order.restaurant_id == restaurant_id)
+            .where(
+                and_(
+                    Order.status.in_([OrderStatus.DISPATCHED, OrderStatus.DELIVERED]),
+                    Order.created_at >= twenty_four_hours_ago
+                )
+            )
+            .options(
+                joinedload(Order.items).joinedload(OrderItem.menu_item),
+                joinedload(Order.items).joinedload(OrderItem.modifiers).joinedload(OrderItemModifier.modifier_option),
+                joinedload(Order.items).joinedload(OrderItem.exclusions),
+                joinedload(Order.driver)
             )
             .order_by(Order.created_at.desc())
         )
