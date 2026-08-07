@@ -177,7 +177,8 @@ class OrderService:
                 tracking_code=order.tracking_code,
                 status=status,
                 delivery_pin=delivery_pin,
-                order_summary=summary
+                order_summary=summary,
+                fulfillment_method=order.fulfillment_method
             )
 
     @staticmethod

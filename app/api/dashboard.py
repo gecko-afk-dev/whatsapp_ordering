@@ -216,20 +216,23 @@ async def get_active_orders(
     restaurant_id: int,
     current_user: User = Depends(get_current_kitchen_or_above)
 ):
-    """Returns all non-terminal orders for a restaurant."""
+    """Returns all orders (daily ledger). Terminal orders are kept for 24 hours."""
+    from datetime import datetime, timedelta
+    
     assert_restaurant_access(current_user, restaurant_id)
     async with AsyncSessionLocal() as db:
+        twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+        
         query = await db.execute(
             select(Order)
             .where(Order.restaurant_id == restaurant_id)
             .where(
-                Order.status.in_(
-                    [
-                        OrderStatus.RECEIVED,
-                        OrderStatus.ACCEPTED,
-                        OrderStatus.PREPARING,
-                        OrderStatus.READY,
-                    ]
+                or_(
+                    ~Order.status.in_([OrderStatus.DELIVERED, OrderStatus.CANCELLED]),
+                    and_(
+                        Order.status.in_([OrderStatus.DELIVERED, OrderStatus.CANCELLED]),
+                        Order.created_at >= twenty_four_hours_ago
+                    )
                 )
             )
             .options(

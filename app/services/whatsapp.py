@@ -171,7 +171,7 @@ class WhatsAppService:
             }
         )
 
-    async def send_order_status_notification(self, to_phone: str, lang: str, tracking_code: str, status: str, delivery_pin: str = None, order_summary: str = None):
+    async def send_order_status_notification(self, to_phone: str, lang: str, tracking_code: str, status: str, delivery_pin: str = None, order_summary: str = None, fulfillment_method: str = None):
         """Sends translated status updates to the customer"""
         status_messages = {
             "accepted": {
@@ -213,6 +213,13 @@ class WhatsAppService:
         # Default to French if customer language is missing
         customer_lang = lang if lang in ["fr", "ar", "en"] else "fr"
         text = status_messages[status][customer_lang]
+        
+        if status == "ready" and fulfillment_method == "pickup":
+            text = {
+                "fr": f"🥡 Bonne nouvelle ! Votre commande #{tracking_code} est emballée et prête à être récupérée au comptoir ! À très vite.",
+                "ar": f"🥡 خبر سار! طلبك رقم {tracking_code} معبأ وجاهز للاستلام من شباك الطلبات! نراك قريباً.",
+                "en": f"🥡 Great news! Your order #{tracking_code} is packed and ready for pickup at the counter! See you soon."
+            }[customer_lang]
         
         if delivery_pin and status == "dispatched":
             pin_messages = {
