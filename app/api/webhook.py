@@ -18,18 +18,23 @@ from app.services.order_service import OrderService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- Rate Limiter (In-Memory) ---
-# TODO: Migrate to Redis in-memory cache to support multi-instance deployments.
-# Current implementation uses in-memory dict which does NOT scale across workers.
-# For production, integrate: pip install aioredis
-# Usage pattern:
-#   redis_client = aioredis.from_url(settings.REDIS_URL)
-#   key = f"rate_limit:{user_id}"
-#   count = await redis_client.incr(key)
-#   if count == 1:
-#       await redis_client.expire(key, RATE_LIMIT_SECONDS)
-#   if count > MAX_REQUESTS:
-#       raise HTTPException(429, "Rate limit exceeded")
+# --- Rate Limiter ---
+import time
+try:
+    # Modern redis-py >= 4.2.0 includes asyncio support directly
+    import redis.asyncio as redis_async
+except ImportError:
+    try:
+        import aioredis as redis_async
+    except ImportError:
+        redis_async = None
+
+redis_client = None
+if settings.REDIS_URL and redis_async:
+    try:
+        redis_client = redis_async.from_url(settings.REDIS_URL, decode_responses=True)
+    except Exception as e:
+        logger.warning(f"Failed to initialize Redis client: {e}")
 
 USER_RATE_LIMITS = {}
 RATE_LIMIT_SECONDS = 1.0
@@ -155,17 +160,38 @@ async def handle_events(request: Request):
         wa_id = message["from"]
 
         # --- RATE LIMITING ---
-        now = time.time()
-        last_request_time = USER_RATE_LIMITS.get(wa_id, 0)
-        
-        if now - last_request_time < RATE_LIMIT_SECONDS:
-            logger.warning(f"Rate limit exceeded for {wa_id}. Dropping message.")
-            return Response(status_code=200)
-            
-        USER_RATE_LIMITS[wa_id] = now
-        
-        if len(USER_RATE_LIMITS) > MAX_RATE_LIMIT_ENTRIES:
-            USER_RATE_LIMITS.clear()
+        if redis_client:
+            try:
+                key = f"rate_limit:{wa_id}"
+                # Atomically increment and set expiry
+                async with redis_client.pipeline(transaction=True) as pipe:
+                    await pipe.incr(key).expire(key, int(RATE_LIMIT_SECONDS)).execute()
+                    
+                # To enforce "1 request per second", we can check if it already existed
+                # Wait, if we just set expiry to 1 second, and incr returns > 1, it's a violation
+                count = await redis_client.get(key)
+                if count and int(count) > 1:
+                    logger.warning(f"Rate limit exceeded for {wa_id}. Dropping message.")
+                    return Response(status_code=200)
+            except Exception as e:
+                logger.error(f"Redis rate limiter failed: {e}. Falling back to in-memory.")
+                now = time.time()
+                last_request_time = USER_RATE_LIMITS.get(wa_id, 0)
+                if now - last_request_time < RATE_LIMIT_SECONDS:
+                    logger.warning(f"Rate limit exceeded for {wa_id}. Dropping message.")
+                    return Response(status_code=200)
+                USER_RATE_LIMITS[wa_id] = now
+                if len(USER_RATE_LIMITS) > MAX_RATE_LIMIT_ENTRIES:
+                    USER_RATE_LIMITS.clear()
+        else:
+            now = time.time()
+            last_request_time = USER_RATE_LIMITS.get(wa_id, 0)
+            if now - last_request_time < RATE_LIMIT_SECONDS:
+                logger.warning(f"Rate limit exceeded for {wa_id}. Dropping message.")
+                return Response(status_code=200)
+            USER_RATE_LIMITS[wa_id] = now
+            if len(USER_RATE_LIMITS) > MAX_RATE_LIMIT_ENTRIES:
+                USER_RATE_LIMITS.clear()
         # ---------------------
 
         async with AsyncSessionLocal() as db:

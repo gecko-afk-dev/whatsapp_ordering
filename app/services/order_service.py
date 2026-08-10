@@ -123,7 +123,7 @@ class OrderService:
         new_order.total_price = total_price
         
         # Deduct 3.0 MAD from Prepaid Wallet
-        res_rest = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+        res_rest = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id).with_for_update())
         restaurant = res_rest.scalar_one_or_none()
         if restaurant:
             if restaurant.wallet_balance <= -75.0:

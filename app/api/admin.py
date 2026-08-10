@@ -144,7 +144,7 @@ async def login(request: LoginRequest, response: Response):
         )
 
         return TokenResponse(
-            access_token=None,  # Don't return token in body when using cookies
+            access_token=access_token,  # Returned so KDS frontend captures JWT in localStorage for WebSocket subprotocol
             user={
                 "id": user.id,
                 "email": user.email,
@@ -501,6 +501,12 @@ async def get_billing_transactions(
     current_user: User = Depends(get_current_user)
 ):
     """Get wallet transactions. Owners see their own, admins see all or filter by restaurant."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not authorized to access restaurant billing ledger."
+        )
+        
     async with AsyncSessionLocal() as db:
         query = select(WalletTransaction).order_by(desc(WalletTransaction.created_at))
         
