@@ -7,7 +7,7 @@ import string
 def generate_tracking_code():
     return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 from typing import List, Optional
-from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum
+from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -321,7 +321,7 @@ class AuditLog(Base):
     actor_email: Mapped[str] = mapped_column(String(100))
     action: Mapped[str] = mapped_column(String(100), index=True)  # e.g. ORDER_STATUS_UPDATED
     target: Mapped[Optional[str]] = mapped_column(String(100))    # e.g. order_id=42
-    detail: Mapped[Optional[dict]] = mapped_column(JSONB)            # structured JSON data
+    detail: Mapped[Optional[dict]] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))            # structured JSON data
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 class BetaCard(Base):

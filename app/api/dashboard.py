@@ -186,8 +186,8 @@ async def websocket_endpoint(
       2. Sec-WebSocket-Protocol: bearer.{token}  — dev fallback or legacy clients.
     Both paths validate the same JWT with the same secret.
     """
-    token: str | None = None
-    selected_subprotocol: str | None = None
+    token: Optional[str] = None
+    selected_subprotocol: Optional[str] = None
 
     # 1. Try cookie auth first (preferred — no token in JS memory)
     cookie_token = websocket.cookies.get("access_token")
@@ -434,8 +434,8 @@ async def _dispatch_notifications_background(
     order_id: int,
     order_tracking_code: str,
     order_total_price: float,
-    order_latitude: float | None,
-    order_longitude: float | None,
+    order_latitude: Optional[float],
+    order_longitude: Optional[float],
     customer_wa_id_for_driver: str,
 ):
     """
