@@ -17,6 +17,7 @@ from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, 
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
+from app.services.event_engine import queue_event
 
 router = APIRouter()
 
@@ -406,6 +407,22 @@ async def update_order_status(
                 "new_status": new_status_val,
             },
         )
+
+        # Emit KDS lifecycle instrumentation events (non-blocking)
+        _kds_event_map = {
+            OrderStatus.ACCEPTED.value: "order.kds_sent",
+            OrderStatus.READY.value: "order.kds_ready",
+            OrderStatus.DISPATCHED.value: "order.dispatched",
+        }
+        kds_event_type = _kds_event_map.get(new_status_val)
+        if kds_event_type:
+            queue_event(
+                background_tasks,
+                event_type=kds_event_type,
+                channel="kds",
+                restaurant_id=order.restaurant_id,
+                payload={"order_id": order.id, "new_status": new_status_val},
+            )
 
         # Trigger generic status WhatsApp notification (skipped for DISPATCHED — handled above with PIN)
         if body.new_status != OrderStatus.DISPATCHED:

@@ -346,3 +346,42 @@ class BetaSignup(Base):
     confirmation_sent: Mapped[bool] = mapped_column(default=False)
     provisioned: Mapped[bool] = mapped_column(default=False)
     card: Mapped["BetaCard"] = relationship(back_populates="signup")
+
+
+# ---------------------------------------------------------------------------
+# Analytics — raw_l1 instrumentation layer
+# ---------------------------------------------------------------------------
+
+import uuid as _uuid
+
+class EventLog(Base):
+    """
+    Append-only event ledger for the GEQO Internal Insights Engine.
+    Lives in the raw_l1 PostgreSQL schema (isolated from operational tables).
+    Never FK-constrained to operational tables — decoupled analytics store.
+    """
+    __tablename__ = "event_logs"
+    __table_args__ = {"schema": "raw_l1"}
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(_uuid.uuid4())
+    )
+    # Client-supplied idempotency key — prevents duplicate events on retry
+    event_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True, unique=True
+    )
+    # e.g. "order.placed", "wallet.toll_charged", "menu.viewed"
+    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    # Tenant scoping — intentionally no FK to allow historical data survival
+    restaurant_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
+    # SHA-256(phone.strip() + salt) — pseudonymized at source, never raw PII
+    customer_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    # Origin channel: "whatsapp" | "pwa" | "kds" | "system"
+    channel: Mapped[str] = mapped_column(String(20))
+    # Typed event context — arbitrary structured payload
+    payload: Mapped[Optional[dict]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, index=True
+    )

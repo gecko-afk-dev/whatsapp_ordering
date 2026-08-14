@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
+from app.services.event_engine import fire_and_forget_event
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -271,6 +272,28 @@ async def process_flow_request(payload: dict):
                 )
                 
                 await db.commit()
+                
+                # Emit: PIN was verified and delivery marked complete
+                fire_and_forget_event(
+                    event_type="order.pin_verified",
+                    channel="system",
+                    restaurant_id=restaurant.id,
+                    payload={
+                        "order_id": order_id,
+                        "driver_id": driver.id,
+                        "tracking_code": order.tracking_code,
+                    },
+                )
+                fire_and_forget_event(
+                    event_type="order.completed",
+                    channel="system",
+                    restaurant_id=restaurant.id,
+                    payload={
+                        "order_id": order_id,
+                        "tracking_code": order.tracking_code,
+                        "total_price": order.total_price,
+                    },
+                )
                 
                 # Notify Dashboard
                 await manager.broadcast_to_restaurant(restaurant.id, {"event": "ORDER_STATUS_UPDATED", "order_id": order.id, "new_status": "delivered"})

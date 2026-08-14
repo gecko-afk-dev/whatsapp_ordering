@@ -1,8 +1,9 @@
 import math
 import logging
+import time
 from typing import List, Optional
 from collections import Counter
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException, Header, Depends, BackgroundTasks, Request
 from pydantic import BaseModel
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -18,9 +19,24 @@ from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
 from app.services.order_service import OrderService
 from app.services.hours import is_restaurant_open
+from app.services.event_engine import queue_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# In-memory rate limiter for the public beacon endpoint (mirrors webhook.py)
+# ---------------------------------------------------------------------------
+_BEACON_RATE_LIMIT: dict = {}          # ip -> last_request_timestamp
+_BEACON_RATE_WINDOW_S: float = 2.0    # 30 req/min ≈ 1 per 2s per IP
+_BEACON_MAX_ENTRIES: int = 20000
+
+# Whitelisted event types the PWA is allowed to emit (server enforced)
+_ALLOWED_PWA_EVENT_TYPES = frozenset({
+    "menu.viewed",
+    "product.added_to_cart",
+    "checkout.started",
+})
 
 def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Returns distance in kilometers between two GPS points."""
@@ -58,7 +74,11 @@ async def verify_session_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid or expired session token")
 
 @router.post("/orders/checkout")
-async def process_checkout(payload: CheckoutPayload, session_payload: dict = Depends(verify_session_token)):
+async def process_checkout(
+    payload: CheckoutPayload,
+    background_tasks: BackgroundTasks,
+    session_payload: dict = Depends(verify_session_token),
+):
     wa_id = session_payload.get("sub")
     restaurant_id = session_payload.get("rid")
     if not wa_id or not restaurant_id:
@@ -249,9 +269,90 @@ async def process_checkout(payload: CheckoutPayload, session_payload: dict = Dep
         await wa_service.send_order_confirmation(wa_id, cust_lang)
         await wa_service.notify_manager_new_order(restaurant.owner_wa_id, new_order.id, new_order.total_price, new_order.fulfillment_method.value)
 
+        # 5. Emit instrumentation events (non-blocking, runs after response)
+        queue_event(
+            background_tasks,
+            event_type="order.placed",
+            channel="pwa",
+            restaurant_id=restaurant_id,
+            phone_number=wa_id,
+            payload={
+                "order_id": new_order.id,
+                "total_price": new_order.total_price,
+                "delivery_fee": new_order.delivery_fee,
+                "fulfillment_method": new_order.fulfillment_method.value,
+                "item_count": len(payload.items),
+            },
+        )
+        queue_event(
+            background_tasks,
+            event_type="wallet.toll_charged",
+            channel="system",
+            restaurant_id=restaurant_id,
+            payload={
+                "amount": -3.0,
+                "order_id": new_order.id,
+                "new_balance": round(restaurant.wallet_balance, 4),
+            },
+        )
+
         return {
             "success": True,
             "order_id": new_order.id,
             "total_price": new_order.total_price,
             "delivery_fee": new_order.delivery_fee
         }
+
+
+# ---------------------------------------------------------------------------
+# Public Client Beacon Endpoint
+# ---------------------------------------------------------------------------
+
+class BeaconPayload(BaseModel):
+    event_id: Optional[str] = None
+    event_type: str
+    restaurant_id: int
+    channel: str = "pwa"
+    payload: Optional[dict] = None
+
+
+@router.post("/events")
+async def client_event_beacon(
+    request: Request,
+    body: BeaconPayload,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Public client beacon endpoint for the Consumer Menu PWA.
+    Accepts funnel events (menu.viewed, product.added_to_cart, checkout.started).
+    Rate-limited per client IP. No authentication required.
+    Events are written asynchronously — response is immediate.
+    """
+    # --- IP-based rate limiting (mirrors webhook.py pattern, no extra deps) ---
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    last_ts = _BEACON_RATE_LIMIT.get(client_ip, 0)
+    if now - last_ts < _BEACON_RATE_WINDOW_S:
+        raise HTTPException(status_code=429, detail="Too many events. Please slow down.")
+    _BEACON_RATE_LIMIT[client_ip] = now
+    if len(_BEACON_RATE_LIMIT) > _BEACON_MAX_ENTRIES:
+        _BEACON_RATE_LIMIT.clear()
+
+    # --- Whitelist enforcement ---
+    if body.event_type not in _ALLOWED_PWA_EVENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Event type '{body.event_type}' is not allowed on this endpoint.",
+        )
+
+    # --- Enqueue (non-blocking, response returns immediately) ---
+    queue_event(
+        background_tasks,
+        event_type=body.event_type,
+        channel="pwa",
+        restaurant_id=body.restaurant_id,
+        payload=body.payload or {},
+        event_id=body.event_id,
+    )
+
+    return {"accepted": True}

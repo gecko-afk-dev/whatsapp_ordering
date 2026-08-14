@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.services.whatsapp import WhatsAppService
 from app.services.socket_manager import manager
 from app.services.order_service import OrderService
+from app.services.event_engine import fire_and_forget_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -297,6 +298,14 @@ async def handle_events(request: Request):
                 customer = Customer(wa_id=wa_id, language=None)
                 db.add(customer)
                 await db.commit()
+                # Emit: first-ever message from this WA number to this restaurant
+                fire_and_forget_event(
+                    event_type="webhook.received",
+                    channel="whatsapp",
+                    restaurant_id=restaurant.id,
+                    phone_number=wa_id,
+                    payload={"message_type": m_type, "is_new_customer": True},
+                )
                 await wa_service.send_language_picker(wa_id)
                 return Response(status_code=200)
 
@@ -311,6 +320,14 @@ async def handle_events(request: Request):
                         "ar" if "ar" in sel_id else "fr" if "fr" in sel_id else "en"
                     )
                     await db.commit()
+                    # Emit: customer chose a language = explicit consent to receive messages
+                    fire_and_forget_event(
+                        event_type="customer.consented",
+                        channel="whatsapp",
+                        restaurant_id=restaurant.id,
+                        phone_number=wa_id,
+                        payload={"language": customer.language},
+                    )
                     await check_and_send_magic_link(wa_service, wa_id, customer, restaurant)
                 else:
                     await wa_service.send_language_picker(wa_id)
