@@ -42,8 +42,8 @@ async def health_check(response: Response):
         except ImportError:
             import aioredis
             
-        if settings.REDIS_URL:
-            redis_client = aioredis.from_url(settings.REDIS_URL)
+        if settings.redis_url_formatted:
+            redis_client = aioredis.from_url(settings.redis_url_formatted)
             pong = await redis_client.ping()
             redis_raw = f"type:{type(pong).__name__}, value:{repr(pong)}"
             

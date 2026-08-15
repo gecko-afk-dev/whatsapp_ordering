@@ -44,6 +44,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @property
+    def redis_url_formatted(self) -> str:
+        url = self.REDIS_URL or "redis://redis:6379/0"
+        if not url.startswith(("redis://", "rediss://", "unix://")):
+            url = f"redis://{url}"
+        return url
 
 # Create one "settings" object to be used everywhere
 settings = Settings()
