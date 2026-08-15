@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     WHATSAPP_APP_SECRET: str
     SECRET_KEY: str
     ALLOWED_ORIGINS: str = ""  # Default empty; must be set in production
-    REDIS_URL: Optional[str] = "redis://localhost:6379"
+    REDIS_URL: Optional[str] = "redis://redis:6379/0"
 
     # Resend Configuration
     RESEND_API_KEY: Optional[str] = None

@@ -37,11 +37,14 @@ async def health_check(response: Response):
     redis_raw = None
     start = time.perf_counter()
     try:
-        import redis.asyncio as redis_async
+        try:
+            import redis.asyncio as aioredis
+        except ImportError:
+            import aioredis
+            
         if settings.REDIS_URL:
-            # Short timeout for health probe to prevent hanging
-            r = redis_async.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2.0)
-            pong = await r.ping()
+            redis_client = aioredis.from_url(settings.REDIS_URL)
+            pong = await redis_client.ping()
             redis_raw = f"type:{type(pong).__name__}, value:{repr(pong)}"
             
             # Accept any truthy ping response or PONG variant
@@ -49,7 +52,7 @@ async def health_check(response: Response):
                 redis_status = "up"
             else:
                 redis_error = f"Unexpected ping response: {redis_raw}"
-            await r.aclose()
+            await redis_client.aclose()
         else:
             redis_status = "skipped"
     except Exception as e:
