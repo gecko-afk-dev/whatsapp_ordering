@@ -39,7 +39,9 @@ async def health_check(response: Response):
         if settings.REDIS_URL:
             # Short timeout for health probe to prevent hanging
             r = redis_async.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2.0)
-            if await r.ping():
+            # Update the ping check to handle boolean, string, or bytes:
+            redis_pong = await r.ping()
+            if redis_pong in (True, "PONG", b"PONG"):
                 redis_status = "up"
             await r.aclose()
         else:
