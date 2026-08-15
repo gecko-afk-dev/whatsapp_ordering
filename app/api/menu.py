@@ -79,6 +79,27 @@ class ModifierOptionUpdate(BaseModel):
 
 # --- Helper ---
 
+async def invalidate_menu_cache(restaurant_id: int, db: AsyncSession):
+    import redis.asyncio as redis_async
+    from app.core.config import settings
+    from app.models import Restaurant
+    
+    if not settings.REDIS_URL:
+        return
+        
+    try:
+        r = redis_async.from_url(settings.REDIS_URL, decode_responses=True)
+        await r.delete(f"cache:menu:{restaurant_id}")
+        
+        res = await db.execute(select(Restaurant.slug).where(Restaurant.id == restaurant_id))
+        slug = res.scalar_one_or_none()
+        if slug:
+            await r.delete(f"cache:menu:{slug}")
+            
+        await r.aclose()
+    except Exception:
+        pass # Fail open, don't crash on cache clear failure
+
 async def check_restaurant_access(db: AsyncSession, current_user: User, restaurant_id: int):
     if current_user.role == UserRole.RESTAURANT_OWNER and current_user.restaurant_id != restaurant_id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this menu")
@@ -131,6 +152,7 @@ async def create_category(category: CategoryCreate, current_user: User = Depends
         db.add(new_cat)
         await db.commit()
         await db.refresh(new_cat)
+        await invalidate_menu_cache(target_res_id, db)
         return new_cat
 
 @router.delete("/categories/{cat_id}")
@@ -155,6 +177,7 @@ async def delete_category(cat_id: int, current_user: User = Depends(get_manager_
         
         await db.delete(cat)
         await db.commit()
+        await invalidate_menu_cache(cat.restaurant_id, db)
         return {"status": "deleted"}
 
 @router.post("/items")
@@ -180,6 +203,7 @@ async def create_item(item: MenuItemCreate, current_user: User = Depends(get_man
         db.add(new_item)
         await db.commit()
         await db.refresh(new_item)
+        await invalidate_menu_cache(cat.restaurant_id, db)
         return new_item
 
 @router.delete("/items/{item_id}")
@@ -203,6 +227,7 @@ async def delete_item(item_id: int, current_user: User = Depends(get_manager_or_
         
         await db.delete(item)
         await db.commit()
+        await invalidate_menu_cache(item.category.restaurant_id, db)
         return {"status": "deleted"}
 
 @router.post("/modifiers/groups")
@@ -239,6 +264,8 @@ async def create_modifier_group(group: ModifierGroupCreate, current_user: User =
         db.add(new_group)
         await db.commit()
         await db.refresh(new_group)
+        res_id = parent.category.restaurant_id if group.menu_item_id else parent.restaurant_id
+        await invalidate_menu_cache(res_id, db)
         return new_group
 
 @router.post("/modifiers/options")
@@ -270,6 +297,7 @@ async def create_modifier_option(option: ModifierOptionCreate, current_user: Use
         db.add(new_opt)
         await db.commit()
         await db.refresh(new_opt)
+        await invalidate_menu_cache(res_id, db)
         return new_opt
 
 @router.delete("/modifiers/groups/{group_id}")
@@ -292,6 +320,7 @@ async def delete_modifier_group(group_id: int, current_user: User = Depends(get_
         
         await db.delete(group)
         await db.commit()
+        await invalidate_menu_cache(res_id, db)
         return {"status": "deleted"}
 
 @router.delete("/modifiers/options/{option_id}")
@@ -315,6 +344,7 @@ async def delete_modifier_option(option_id: int, current_user: User = Depends(ge
         
         await db.delete(opt)
         await db.commit()
+        await invalidate_menu_cache(res_id, db)
         return {"status": "deleted"}
 
 @router.put("/categories/{cat_id}")
@@ -334,6 +364,7 @@ async def update_category(cat_id: int, data: CategoryUpdate, current_user: User 
         
         await db.commit()
         await db.refresh(cat)
+        await invalidate_menu_cache(cat.restaurant_id, db)
         return cat
 
 @router.put("/items/{item_id}")
@@ -356,6 +387,7 @@ async def update_item(item_id: int, data: MenuItemUpdate, current_user: User = D
         
         await db.commit()
         await db.refresh(item)
+        await invalidate_menu_cache(item.category.restaurant_id, db)
         return item
 
 @router.put("/modifiers/groups/{group_id}")
@@ -382,6 +414,7 @@ async def update_modifier_group(group_id: int, data: ModifierGroupUpdate, curren
         
         await db.commit()
         await db.refresh(group)
+        await invalidate_menu_cache(res_id, db)
         return group
 
 @router.put("/modifiers/options/{opt_id}")
@@ -408,6 +441,7 @@ async def update_modifier_option(opt_id: int, data: ModifierOptionUpdate, curren
         
         await db.commit()
         await db.refresh(opt)
+        await invalidate_menu_cache(res_id, db)
         return opt
 
 @router.post("/items/{target_id}/copy-modifiers/{source_id}")
@@ -468,4 +502,5 @@ async def copy_modifiers(target_id: int, source_id: int, current_user: User = De
                 db.add(new_opt)
                 
         await db.commit()
+        await invalidate_menu_cache(target_item.category.restaurant_id, db)
         return {"status": "success", "message": "Modifiers copied successfully"}

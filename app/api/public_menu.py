@@ -13,6 +13,23 @@ async def get_public_menu(restaurant_identifier: str):
     Fetch the public menu for a restaurant.
     Includes categories, items, and modifier groups/options.
     """
+    import json
+    import redis.asyncio as redis_async
+    from app.core.config import settings
+    
+    cache_key = f"cache:menu:{restaurant_identifier}"
+    r = None
+    
+    if settings.REDIS_URL:
+        try:
+            r = redis_async.from_url(settings.REDIS_URL, decode_responses=True)
+            cached_menu = await r.get(cache_key)
+            if cached_menu:
+                await r.aclose()
+                return json.loads(cached_menu)
+        except Exception:
+            pass # Fail open, ignore cache errors
+
     async with AsyncSessionLocal() as db:
         # Check if restaurant exists and is active
         if restaurant_identifier.isdigit():
@@ -87,7 +104,7 @@ async def get_public_menu(restaurant_identifier: str):
             })
             all_items_flat.extend(items_data)
 
-        return {
+        payload = {
             "restaurant": {
                 "id": str(restaurant.id),
                 "name": restaurant.name,
@@ -104,3 +121,12 @@ async def get_public_menu(restaurant_identifier: str):
             "categories": categories_data,
             "items": all_items_flat
         }
+        
+        if r:
+            try:
+                await r.setex(cache_key, 300, json.dumps(payload))
+                await r.aclose()
+            except Exception:
+                pass
+                
+        return payload

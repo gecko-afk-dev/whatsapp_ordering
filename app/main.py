@@ -7,25 +7,10 @@ from fastapi.responses import JSONResponse
 from app.core.database import engine
 from app.core.config import settings
 from app.models import Base
-from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth, beta, public_menu, public_orders
+from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth, beta, public_menu, public_orders, health
+from app.core.logging_config import setup_logging
 
-class JSONFormatter(logging.Formatter):
-    def format(self, record):
-        log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage()
-        }
-        if record.exc_info:
-            log_record["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_record)
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(JSONFormatter())
-logger.handlers = [handler]
+logger = setup_logging()
 
 
 @asynccontextmanager
@@ -42,10 +27,10 @@ app = FastAPI(title="GEQO WhatsApp SaaS Engine", lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    logging.exception(f"Unhandled exception: {exc}")
+    logger.exception(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error"},
+        content={"detail": "An internal server error occurred. Our engineering team has been notified."},
     )
 
 # CORS for Frontend — only allow explicit origins, reject wildcards
@@ -114,6 +99,10 @@ app.include_router(beta.router, prefix="/api/v1/public")
 app.include_router(public_menu.router, prefix="/api/v1/public")
 app.include_router(public_orders.router, prefix="/api/v1/public")
 
+# 10. Health Check (available at both root and /api/v1/health)
+app.include_router(health.router)
+app.include_router(health.router, prefix="/api/v1")
+
 @app.get("/")
 def home():
-    return {"status": "Engine Online", "version": "1.5 - Menu Management Phase"}
+    return {"status": "Engine Online", "version": "1.5 - Infrastructure Phase"}
