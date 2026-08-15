@@ -109,6 +109,31 @@ async def check_and_send_magic_link(wa_service, wa_id: str, customer, restaurant
         await wa_service.send_text_message(wa_id, closed_msg)
         return False
 
+    # Grace Period Gate — block Magic Link if -25 unpaid order limit exceeded
+    if restaurant.wallet_balance < 0.0:
+        from sqlalchemy.future import select
+        from sqlalchemy import func
+        async with AsyncSessionLocal() as _db:
+            unpaid_res = await _db.execute(
+                select(func.count(Order.id)).where(
+                    Order.restaurant_id == restaurant.id,
+                    Order.status.notin_([OrderStatus.CANCELLED, OrderStatus.DELIVERED]),
+                )
+            )
+            unpaid_count = unpaid_res.scalar() or 0
+        if unpaid_count >= 25:
+            grace_msg_fr = (
+                f"⚠️ {restaurant.name} a atteint sa limite de 25 commandes en attente. "
+                "Veuillez recharger votre portefeuille GEQO pour continuer."
+            )
+            grace_msg_ar = (
+                f"⚠️ وصل {restaurant.name} إلى حد 25 طلباً غير مدفوع. "
+                "يرجى تعبئة محفظتك لمواصلة الطلب."
+            )
+            grace_msg = grace_msg_ar if lang == "ar" else grace_msg_fr
+            await wa_service.send_text_message(wa_id, grace_msg)
+            return False
+
     magic_link = generate_magic_link(wa_id, restaurant)
     await wa_service.send_magic_link(wa_id, customer.language, restaurant.id, magic_link)
     return True

@@ -1,4 +1,5 @@
 fastapi==0.115.0
+fpdf2==2.8.1
 uvicorn[standard]==0.30.6
 sqlalchemy[asyncio]==2.0.35
 asyncpg==0.29.0

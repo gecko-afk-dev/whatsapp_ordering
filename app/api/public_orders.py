@@ -6,6 +6,7 @@ from collections import Counter
 from fastapi import APIRouter, HTTPException, Header, Depends, BackgroundTasks, Request
 from pydantic import BaseModel
 from sqlalchemy.future import select
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from jose import JWTError, jwt
 from app.core.config import settings
@@ -238,10 +239,24 @@ async def process_checkout(
         new_order.total_price = final_total
         new_order.delivery_pin = await OrderService.generate_delivery_pin(db)
         
-        # Enforce Grace Period
-        # FIX-6: Return a human-readable localized error instead of the raw "ERROR_SCREEN" string
-        if restaurant.wallet_balance <= -75.0:
-            raise HTTPException(status_code=400, detail="The restaurant is currently unable to accept orders. Please try again later.")
+        # Enforce Grace Period — order-count based buffer (-25 unpaid orders)
+        # Only evaluate when the wallet is already negative to avoid a DB round-trip on every order
+        if restaurant.wallet_balance < 0.0:
+            unpaid_count_res = await db.execute(
+                select(func.count(Order.id)).where(
+                    Order.restaurant_id == restaurant_id,
+                    Order.status.notin_([OrderStatus.CANCELLED, OrderStatus.DELIVERED]),
+                )
+            )
+            unpaid_count = unpaid_count_res.scalar() or 0
+            if unpaid_count >= 25:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Le restaurant a atteint sa limite de tolérance (25 commandes en attente "
+                        "de régularisation). Veuillez recharger votre portefeuille."
+                    ),
+                )
             
         # Deduct from Prepaid Wallet (row already locked by .with_for_update() above)
         restaurant.wallet_balance -= 3.0
