@@ -33,22 +33,29 @@ async def health_check(response: Response):
     # 2. Redis Check
     redis_status = "down"
     redis_latency = 0.0
+    redis_error = None
+    redis_raw = None
     start = time.perf_counter()
     try:
         import redis.asyncio as redis_async
         if settings.REDIS_URL:
             # Short timeout for health probe to prevent hanging
             r = redis_async.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2.0)
-            # Update the ping check to handle boolean, string, or bytes:
-            redis_pong = await r.ping()
-            if redis_pong in (True, "PONG", b"PONG"):
+            pong = await r.ping()
+            redis_raw = f"type:{type(pong).__name__}, value:{repr(pong)}"
+            
+            # Accept any truthy ping response or PONG variant
+            if pong is True or pong == "PONG" or pong == b"PONG" or str(pong).upper() == "PONG":
                 redis_status = "up"
+            else:
+                redis_error = f"Unexpected ping response: {redis_raw}"
             await r.aclose()
         else:
             redis_status = "skipped"
     except Exception as e:
         health_status = "unhealthy"
         status_code = 503
+        redis_error = f"Exception: {type(e).__name__} - {str(e)}"
         
     redis_latency = round((time.perf_counter() - start) * 1000, 2)
     if redis_status == "skipped":
@@ -72,7 +79,12 @@ async def health_check(response: Response):
         "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "checks": {
             "database": {"status": db_status, "latency_ms": db_latency},
-            "redis": {"status": redis_status, "latency_ms": redis_latency},
+            "redis": {
+                "status": redis_status, 
+                "latency_ms": redis_latency,
+                **({"error": redis_error} if redis_error else {}),
+                **({"raw": redis_raw} if redis_raw else {})
+            },
             "disk": {"status": disk_status, "free_gb": free_gb}
         }
     }
