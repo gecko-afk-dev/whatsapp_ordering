@@ -16,3 +16,9 @@ AsyncSessionLocal = sessionmaker(
     class_=AsyncSession, 
     expire_on_commit=False
 )
+
+from typing import AsyncGenerator
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session

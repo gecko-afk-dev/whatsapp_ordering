@@ -9,7 +9,7 @@ from typing import List, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr, Field
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.config import settings
 from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
 from app.core.tier_guards import require_feature
