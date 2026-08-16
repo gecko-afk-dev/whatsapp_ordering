@@ -177,12 +177,36 @@ async def handle_events(request: Request):
         if not payload.get("entry"):
             return Response(status_code=200)
 
-        value = payload["entry"][0]["changes"][0]["value"]
+        change = payload["entry"][0]["changes"][0]
+        field = change.get("field")
+        value = change.get("value", {})
+
+        if field == "account_update":
+            event = value.get("event", "").upper()
+            if "PENDING" in event or "OFFBOARDING" in event or "RE_REGISTRATION" in event:
+                phone = value.get("phone_number")
+                if phone:
+                    async with AsyncSessionLocal() as db:
+                        res_query = await db.execute(select(Restaurant).where(Restaurant.wa_phone_number == phone))
+                        restaurant = res_query.scalars().first()
+                        if restaurant:
+                            restaurant.whatsapp_status = "RECONNECT_REQUIRED"
+                            await db.commit()
+                            logger.info(f"COEXISTENCE_SYNC_NEEDED: restaurant_id={restaurant.id}")
+            return Response(status_code=200)
+
         if "messages" not in value:
             return Response(status_code=200)
 
         phone_id = value["metadata"]["phone_number_id"]
         message = value["messages"][0]
+        
+        # Check for message echoes (SMB app)
+        is_smb_echo = value.get("smb_message_echoes") or message.get("is_echo") == True or message.get("from") == phone_id
+        if is_smb_echo:
+            logger.info("whatsapp.manual_echo: Ignored manual echo from SMB app.")
+            return Response(status_code=200)
+            
         wa_id = message["from"]
 
         # --- RATE LIMITING ---
