@@ -11,6 +11,7 @@ from pydantic import BaseModel, EmailStr, Field
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
+from app.core.tier_guards import require_feature
 from app.services.email import EmailService
 import secrets
 from app.models import (
@@ -153,6 +154,7 @@ async def login(request: LoginRequest, response: Response):
                 "wallet_balance": user.restaurant.wallet_balance if user.restaurant else 0.0,
                 "is_accepting_orders": user.restaurant.is_accepting_orders if user.restaurant else False,
                 "requires_password_change": user.requires_password_change,
+                "subscription_tier": user.restaurant.subscription_tier.value if user.restaurant else "STARTER",
                 "feature_flags": {
                     "overview": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_OVERVIEW_ENABLED,
                     "orders": True,
@@ -160,6 +162,13 @@ async def login(request: LoginRequest, response: Response):
                     "staff": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_STAFF_ENABLED,
                     "drivers": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_DRIVERS_ENABLED,
                     "audit_logs": True if user.role in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER] else settings.FEATURE_AUDIT_LOGS_ENABLED
+                },
+                "features": {
+                    "campaigns": user.restaurant.has_feature("campaigns") if user.restaurant else (True if user.role == UserRole.ADMIN else False),
+                    "smart_scheduler": user.restaurant.has_feature("smart_scheduler") if user.restaurant else (True if user.role == UserRole.ADMIN else False),
+                    "crm_export": user.restaurant.has_feature("crm_export") if user.restaurant else (True if user.role == UserRole.ADMIN else False),
+                    "pdf_reports": user.restaurant.has_feature("pdf_reports") if user.restaurant else (True if user.role == UserRole.ADMIN else False),
+                    "multi_branch": user.restaurant.has_feature("multi_branch") if user.restaurant else (True if user.role == UserRole.ADMIN else False),
                 }
             }
         )
@@ -1292,6 +1301,7 @@ async def _collect_restaurant_report_data(db, restaurant, month: int, year: int)
 async def export_crm_csv(
     restaurant_id: int,
     current_user: User = Depends(get_current_user),
+    _feature_check = Depends(require_feature("crm_export")),
 ):
     """
     Streams a CSV of all customers for a restaurant.

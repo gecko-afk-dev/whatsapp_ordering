@@ -317,12 +317,36 @@ async def handle_events(request: Request):
                 select(Customer).where(Customer.wa_id == wa_id)
             )
             customer = cust_query.scalar_one_or_none()
+            is_new_customer = False
 
-            # New customer: create and send language picker
             if not customer:
                 customer = Customer(wa_id=wa_id, language=None)
                 db.add(customer)
+                is_new_customer = True
+
+            referral_data = message.get("referral")
+            if referral_data:
+                expires_at = datetime.utcnow() + timedelta(hours=72)
+                customer.ctwa_free_window_expires_at = expires_at
+                
+                fire_and_forget_event(
+                    event_type="ctwa.session_started",
+                    channel="whatsapp",
+                    restaurant_id=restaurant.id,
+                    phone_number=wa_id,
+                    payload={
+                        "referral_source": referral_data.get("source_type"),
+                        "expires_at": expires_at.isoformat()
+                    },
+                )
+                
+            if is_new_customer or referral_data:
                 await db.commit()
+                if is_new_customer:
+                    await db.refresh(customer)
+
+            # New customer: send language picker
+            if is_new_customer:
                 # Emit: first-ever message from this WA number to this restaurant
                 fire_and_forget_event(
                     event_type="webhook.received",

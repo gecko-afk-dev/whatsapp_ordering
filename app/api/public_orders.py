@@ -259,14 +259,16 @@ async def process_checkout(
                 )
             
         # Deduct from Prepaid Wallet (row already locked by .with_for_update() above)
-        restaurant.wallet_balance -= 3.0
-        transaction = WalletTransaction(
-            restaurant_id=restaurant_id,
-            amount=-3.0,
-            type=TransactionType.DEBIT,
-            description=f"Order commission (Order #{new_order.id})"
-        )
-        db.add(transaction)
+        if restaurant.subscription_tier.value == "STARTER":
+            toll_amount = -3.0
+            restaurant.wallet_balance += toll_amount
+            transaction = WalletTransaction(
+                restaurant_id=restaurant_id,
+                amount=toll_amount,
+                type=TransactionType.DEBIT,
+                description=f"Frais de service commande #GQ-{new_order.id}"
+            )
+            db.add(transaction)
         
         await db.commit()
         await db.refresh(new_order)
@@ -299,17 +301,18 @@ async def process_checkout(
                 "item_count": len(payload.items),
             },
         )
-        queue_event(
-            background_tasks,
-            event_type="wallet.toll_charged",
-            channel="system",
-            restaurant_id=restaurant_id,
-            payload={
-                "amount": -3.0,
-                "order_id": new_order.id,
-                "new_balance": round(restaurant.wallet_balance, 4),
-            },
-        )
+        if restaurant.subscription_tier.value == "STARTER":
+            queue_event(
+                background_tasks,
+                event_type="wallet.toll_charged",
+                channel="system",
+                restaurant_id=restaurant_id,
+                payload={
+                    "amount": -3.0,
+                    "order_id": new_order.id,
+                    "new_balance": round(restaurant.wallet_balance, 4),
+                },
+            )
 
         return {
             "success": True,

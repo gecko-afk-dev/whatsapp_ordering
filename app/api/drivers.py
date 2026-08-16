@@ -40,6 +40,14 @@ async def add_driver(driver: DriverCreate, current_user: User = Depends(get_mana
     if not settings.FEATURE_DRIVERS_ENABLED and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Driver management is currently disabled.")
     async with AsyncSessionLocal() as db:
+        if current_user.role != UserRole.ADMIN:
+            from app.models import Restaurant
+            from app.core.tier_guards import check_delivery_agent_limit
+            res = await db.execute(select(Restaurant).where(Restaurant.id == current_user.restaurant_id))
+            restaurant = res.scalar_one_or_none()
+            if restaurant:
+                await check_delivery_agent_limit(restaurant, db)
+
         new_driver = Driver(
             restaurant_id=current_user.restaurant_id,
             name=driver.name,

@@ -58,8 +58,14 @@ class PaymentStatus(PyEnum):
 
 class BetaCardStatus(PyEnum):
     AVAILABLE = "available"    # Printed, not yet scanned
-    CLAIMED = "claimed"        # Form submitted successfully
-    EXPIRED = "expired"        # Manually expired by admin
+    CLAIMED = "claimed"        # Assigned to a restaurant
+    REVOKED = "revoked"        # Invalidated manually
+
+class SubscriptionTier(PyEnum):
+    STARTER = "STARTER"
+    PRO = "PRO"
+    SCALE = "SCALE"
+    MULTI = "MULTI"
 
 # --- Tables ---
 
@@ -113,6 +119,7 @@ class Restaurant(Base):
 
     # New fields for Phase 1
     status: Mapped[RestaurantStatus] = mapped_column(Enum(RestaurantStatus), default=RestaurantStatus.ACTIVE)
+    subscription_tier: Mapped[SubscriptionTier] = mapped_column(Enum(SubscriptionTier), default=SubscriptionTier.STARTER)
     is_accepting_orders: Mapped[bool] = mapped_column(default=True)
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PAID)
     commission_rate: Mapped[float] = mapped_column(Float, default=0.20)  # 20%
@@ -130,12 +137,36 @@ class Restaurant(Base):
     orders: Mapped[List["Order"]] = relationship(back_populates="restaurant")
     owner: Mapped[Optional["User"]] = relationship(back_populates="restaurant")
 
+    def max_delivery_agents(self) -> int:
+        if self.subscription_tier == SubscriptionTier.STARTER:
+            return 2
+        if self.subscription_tier == SubscriptionTier.PRO:
+            return 5
+        return 999
+        
+    def max_kds_screens(self) -> int:
+        if self.subscription_tier == SubscriptionTier.STARTER:
+            return 1
+        if self.subscription_tier == SubscriptionTier.PRO:
+            return 2
+        return 999
+        
+    def has_feature(self, feature_name: str) -> bool:
+        if feature_name in ["pwa_menu", "dispatch", "pin_verification", "geo_fencing"]:
+            return True
+        if feature_name == "multi_branch":
+            return self.subscription_tier == SubscriptionTier.MULTI
+        if feature_name in ["campaigns", "smart_scheduler", "crm_export", "pdf_reports"]:
+            return self.subscription_tier in (SubscriptionTier.SCALE, SubscriptionTier.MULTI)
+        return False
+
 class Customer(Base):
     __tablename__ = "customers"
     id: Mapped[int] = mapped_column(primary_key=True)
     wa_id: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(100))
     language: Mapped[Optional[str]] = mapped_column(String(5))
+    ctwa_free_window_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True, nullable=True)
 
 class Category(Base):
     __tablename__ = "categories"

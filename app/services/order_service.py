@@ -128,14 +128,16 @@ class OrderService:
         if restaurant:
             if restaurant.wallet_balance <= -75.0:
                 raise ValueError("ERROR_SCREEN")
-            restaurant.wallet_balance -= 3.0
-            transaction = WalletTransaction(
-                restaurant_id=restaurant_id,
-                amount=-3.0,
-                type=TransactionType.DEBIT,
-                description=f"Order commission (Order #{new_order.id})"
-            )
-            db.add(transaction)
+            if restaurant.subscription_tier.value == "STARTER":
+                toll_amount = -3.0
+                restaurant.wallet_balance += toll_amount
+                transaction = WalletTransaction(
+                    restaurant_id=restaurant_id,
+                    amount=toll_amount,
+                    type=TransactionType.DEBIT,
+                    description=f"Frais de service commande #GQ-{new_order.id}"
+                )
+                db.add(transaction)
             
         await db.commit()
         return new_order
