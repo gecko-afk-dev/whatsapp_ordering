@@ -3,11 +3,33 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.future import select
 from datetime import datetime, timedelta
 import secrets
+import re
 
 from app.core.database import AsyncSessionLocal
 from app.models import User
 from app.services.email import EmailService
 from app.core.auth import get_password_hash, get_current_user
+
+
+def validate_password_strength(password: str) -> None:
+    """
+    Enforce minimum password strength rules across all password-setting endpoints.
+    Raises HTTPException(400) if the password does not meet requirements.
+    Rules: min 8 chars, ≥1 digit, ≥1 uppercase letter, ≥1 special character.
+    """
+    if (
+        len(password) < 8
+        or not re.search(r"\d", password)
+        or not re.search(r"[A-Z]", password)
+        or not re.search(r'[!@#$%^&*(),.?":{}|<>]', password)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password does not meet strength requirements "
+                "(minimum 8 characters, 1 number, 1 uppercase letter, 1 special symbol)."
+            ),
+        )
 
 router = APIRouter()
 
@@ -39,6 +61,8 @@ async def forgot_password(request: ForgotPasswordRequest):
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest):
+    validate_password_strength(request.new_password)
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(User).where(
@@ -69,6 +93,8 @@ class ForceChangeRequest(BaseModel):
 
 @router.post("/force-change-password")
 async def force_change_password(request: ForceChangeRequest, current_user: User = Depends(get_current_user)):
+    validate_password_strength(request.new_password)
+
     async with AsyncSessionLocal() as db:
         res = await db.execute(select(User).where(User.id == current_user.id))
         user = res.scalar_one()

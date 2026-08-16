@@ -1,5 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Header, Response
 import os
+import re
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,31 @@ from app.models import (
 )
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Password strength validator (shared across admin endpoints)
+# ---------------------------------------------------------------------------
+
+def validate_password_strength(password: str) -> None:
+    """
+    Enforce minimum password strength rules.
+    Raises HTTPException(400) if the password does not meet requirements.
+    Rules: min 8 chars, ≥1 digit, ≥1 uppercase letter, ≥1 special character.
+    """
+    if (
+        len(password) < 8
+        or not re.search(r"\d", password)
+        or not re.search(r"[A-Z]", password)
+        or not re.search(r'[!@#$%^&*(),.?":{}|<>]', password)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Password does not meet strength requirements "
+                "(minimum 8 characters, 1 number, 1 uppercase letter, 1 special symbol)."
+            ),
+        )
 
 # --- Pydantic Schemas ---
 
@@ -286,6 +312,7 @@ async def update_profile(updates: ProfileUpdate, current_user: User = Depends(ge
                 raise HTTPException(status_code=400, detail="Old password is required to change password.")
             if not verify_password(updates.old_password, user.password_hash):
                 raise HTTPException(status_code=400, detail="Incorrect old password.")
+            validate_password_strength(updates.password)
             user.password_hash = get_password_hash(updates.password)
 
         await db.commit()
@@ -800,22 +827,33 @@ async def write_audit_log(
     await db.commit()
 
 @router.get("/staff", response_model=List[StaffResponse])
-async def list_staff(current_user: User = Depends(get_current_restaurant_owner)):
-    """List all staff members for the restaurant owner's restaurant."""
-    if not settings.FEATURE_STAFF_ENABLED:
+async def list_staff(
+    restaurant_id: Optional[int] = Query(default=None, description="Filter by restaurant (admin only)"),
+    current_user: User = Depends(get_current_user)
+):
+    """List staff members. ADMIN sees all (or filtered by restaurant_id). RESTAURANT_OWNER sees only their own staff."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
+    if not settings.FEATURE_STAFF_ENABLED and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Staff management is currently disabled.")
-    if not current_user.restaurant_id:
-        raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
-    
+
     async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(UserModel).where(
-                and_(
-                    UserModel.restaurant_id == current_user.restaurant_id,
-                    UserModel.role.in_([UserRole.CASHIER, UserRole.KITCHEN_STAFF])
-                )
-            )
+        query = select(UserModel).where(
+            UserModel.role.in_([UserRole.CASHIER, UserRole.KITCHEN_STAFF])
         )
+
+        if current_user.role == UserRole.ADMIN:
+            # Super-admin: filter by provided restaurant_id, or return all staff across all restaurants
+            if restaurant_id is not None:
+                query = query.where(UserModel.restaurant_id == restaurant_id)
+        else:
+            # RESTAURANT_OWNER: strictly scoped to their own restaurant
+            if not current_user.restaurant_id:
+                raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+            query = query.where(UserModel.restaurant_id == current_user.restaurant_id)
+
+        result = await db.execute(query)
         staff = result.scalars().all()
         return staff
 

@@ -1,19 +1,20 @@
 import random
 import string
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body, BackgroundTasks, Query, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy import and_, or_
 from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Optional, Dict, Any
 from jose import JWTError, jwt
 from app.core.database import AsyncSessionLocal
 from app.core.auth import (
     SECRET_KEY, ALGORITHM, get_current_cashier_or_above, get_current_kitchen_or_above,
-    assert_restaurant_access
+    get_current_user, assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier, ModifierOption, OrderItemExclusion
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier, ModifierOption, OrderItemExclusion, SubscriptionTier
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
@@ -596,3 +597,191 @@ async def update_restaurant_status(
         
         await db.commit()
         return {"status": "success", "is_accepting_orders": restaurant.is_accepting_orders}
+
+
+# ---------------------------------------------------------------------------
+# Daily Driver Delivery Summary
+# GET /api/v1/dashboard/deliveries/daily-summary/{restaurant_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/deliveries/daily-summary/{restaurant_id}")
+async def get_daily_driver_summary(
+    restaurant_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns today's completed delivery orders aggregated by driver.
+    Time window: 00:00:00 → now in Casablanca local time (UTC+1, no DST).
+    Auth: user must belong to the restaurant or be ADMIN.
+    """
+    # -- Access control --
+    if current_user.role != UserRole.ADMIN and current_user.restaurant_id != restaurant_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this restaurant")
+
+    # -- Today's window in Casablanca time (UTC+1, Morocco Standard Time) --
+    casablanca_offset = timezone(timedelta(hours=1))
+    now_local = datetime.now(casablanca_offset)
+    today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Convert back to UTC for DB comparison (DB stores UTC naive datetimes)
+    today_start_utc = today_start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    now_utc = now_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+    async with AsyncSessionLocal() as db:
+        # Fetch all DELIVERED delivery orders for this restaurant today
+        result = await db.execute(
+            select(Order)
+            .where(
+                and_(
+                    Order.restaurant_id == restaurant_id,
+                    Order.status == OrderStatus.DELIVERED,
+                    Order.fulfillment_method == FulfillmentMethod.DELIVERY,
+                    Order.created_at >= today_start_utc,
+                    Order.created_at <= now_utc,
+                )
+            )
+            .options(joinedload(Order.driver))
+            .order_by(Order.created_at.asc())
+        )
+        orders = result.scalars().unique().all()
+
+        # Fetch all drivers for this restaurant to ensure we include zero-delivery agents
+        drivers_result = await db.execute(
+            select(Driver).where(Driver.restaurant_id == restaurant_id)
+        )
+        all_drivers = drivers_result.scalars().all()
+
+    # -- Aggregate by driver --
+    # driver_id → {"driver": Driver, "orders": [Order, ...]}
+    driver_buckets: Dict[Optional[int], Dict[str, Any]] = {}
+
+    # Pre-populate with all known drivers so zero-delivery agents appear
+    for d in all_drivers:
+        driver_buckets[d.id] = {"driver": d, "orders": []}
+
+    # Unassigned bucket for orders with no driver set
+    for order in orders:
+        key = order.driver_id  # may be None
+        if key not in driver_buckets:
+            driver_buckets[key] = {"driver": order.driver, "orders": []}
+        driver_buckets[key]["orders"].append(order)
+
+    # -- Build response payload --
+    total_deliveries = len(orders)
+    total_cash = sum(o.total_price for o in orders)
+
+    drivers_payload = []
+    for driver_id, bucket in driver_buckets.items():
+        driver_obj = bucket["driver"]
+        bucket_orders = bucket["orders"]
+        cash = sum(o.total_price for o in bucket_orders)
+
+        driver_name = driver_obj.name if driver_obj else "Unassigned"
+        driver_wa  = driver_obj.wa_id if driver_obj else None
+        driver_active = driver_obj.is_active if driver_obj else False
+
+        drivers_payload.append({
+            "driver_id":       driver_id,
+            "driver_name":     driver_name,
+            "driver_phone":    driver_wa,   # wa_id used as phone identifier
+            "is_active":       driver_active,
+            "deliveries_count": len(bucket_orders),
+            "cash_collected":  round(cash, 2),
+            "orders": [
+                {
+                    "id":             o.id,
+                    "tracking_code":  o.tracking_code,
+                    "customer_name":  o.customer_name or o.customer_wa_id,
+                    "total_amount":   o.total_price,
+                    "delivered_at":   o.created_at.isoformat() + "Z",
+                }
+                for o in bucket_orders
+            ],
+        })
+
+    # Sort: drivers with deliveries first, then alphabetically
+    drivers_payload.sort(key=lambda d: (-d["deliveries_count"], d["driver_name"] or ""))
+
+    return {
+        "date": now_local.strftime("%Y-%m-%d"),
+        "total_deliveries_today": total_deliveries,
+        "total_cash_collected_today": round(total_cash, 2),
+        "drivers": drivers_payload,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Owner Latest Monthly PDF — Manifest endpoint
+# GET /api/v1/dashboard/reports/my-latest-pdf
+# ---------------------------------------------------------------------------
+
+@router.get("/reports/my-latest-pdf")
+async def get_my_latest_pdf_manifest(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns report availability manifest for the previous calendar month.
+    Tier-gated: SCALE and MULTI only.
+    If the restaurant was created in the current calendar month (first month of
+    operation), returns has_report=false with a first-month notice message.
+    """
+    if current_user.role not in [UserRole.ADMIN, UserRole.RESTAURANT_OWNER]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="No restaurant assigned to your account")
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Restaurant).where(Restaurant.id == current_user.restaurant_id)
+        )
+        restaurant = result.scalar_one_or_none()
+
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    # -- Tier gate --
+    if restaurant.subscription_tier not in (SubscriptionTier.SCALE, SubscriptionTier.MULTI):
+        raise HTTPException(
+            status_code=403,
+            detail="Les rapports PDF mensuels sont disponibles à partir du forfait Scale."
+        )
+
+    # -- Determine previous calendar month --
+    now = datetime.utcnow()
+    if now.month == 1:
+        report_month = 12
+        report_year  = now.year - 1
+    else:
+        report_month = now.month - 1
+        report_year  = now.year
+
+    # -- First-month check --
+    created = restaurant.created_at  # UTC naive datetime
+    created_month = (created.year, created.month)
+    current_month  = (now.year, now.month)
+
+    if created_month == current_month:
+        # Restaurant created this calendar month — no completed month yet
+        return JSONResponse(content={
+            "has_report": False,
+            "report_month": report_month,
+            "report_year":  report_year,
+            "restaurant_name": restaurant.name,
+            "message": (
+                "Votre premier rapport d'analyse mensuel sera disponible "
+                "à la fin de votre premier mois d'activité."
+            ),
+        })
+
+    # -- Report available: return manifest (actual PDF bytes generated on demand via batch-dispatch) --
+    return {
+        "has_report":      True,
+        "report_month":    report_month,
+        "report_year":     report_year,
+        "restaurant_id":   restaurant.id,
+        "restaurant_name": restaurant.name,
+        "pdf_url": (
+            f"/api/v1/admin/reports/preview/{restaurant.id}"
+            f"?month={report_month}&year={report_year}"
+        ),
+    }
