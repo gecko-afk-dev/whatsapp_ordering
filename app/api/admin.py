@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
 from app.core.tier_guards import require_feature
 from app.services.email import EmailService
+from app.services.pdf_generator import generate_monthly_insights_report
 import secrets
 from app.models import (
     Restaurant, RestaurantStatus, PaymentStatus, Order, OrderStatus,
@@ -1408,34 +1409,14 @@ async def preview_restaurant_report(
     restaurant_id: int,
     month: Optional[int] = None,
     year: Optional[int] = None,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Returns a PDF monthly report inline for browser preview. SuperAdmin only."""
-    now = datetime.utcnow()
-    month = month or now.month
-    year = year or now.year
-
-    async with AsyncSessionLocal() as db:
-        r = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
-        restaurant = r.scalar_one_or_none()
-        if not restaurant:
-            raise HTTPException(status_code=404, detail="Restaurant not found")
-        data = await _collect_restaurant_report_data(db, restaurant, month, year)
-
-    pdf_bytes = _build_monthly_report_pdf(
-        restaurant_name=restaurant.name,
-        restaurant_id=restaurant.id,
-        city=restaurant.city or "",
-        wallet_balance=restaurant.wallet_balance,
-        month=month,
-        year=year,
-        **data,
-    )
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="geqo-report-{restaurant_id}-{year}-{month:02d}.pdf"'},
-    )
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(403, detail="Not authorized to preview reports.")
+    
+    report_data = await generate_monthly_insights_report(db, restaurant_id, month, year)
+    return report_data  # Returns PDF Response or HTML Response fallback
 
 
 class BatchDispatchRequest(BaseModel):
