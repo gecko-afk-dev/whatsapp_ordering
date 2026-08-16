@@ -1458,16 +1458,18 @@ async def batch_dispatch_reports(
                     failed_ids.append(rid)
                     continue
 
-                data = await _collect_restaurant_report_data(db, restaurant, month, year)
-                pdf_bytes = _build_monthly_report_pdf(
-                    restaurant_name=restaurant.name,
-                    restaurant_id=restaurant.id,
-                    city=restaurant.city or "",
-                    wallet_balance=restaurant.wallet_balance,
-                    month=month,
-                    year=year,
-                    **data,
-                )
+                # Use the new Swiss PDF Generator
+                report_resp = await generate_monthly_insights_report(db, restaurant.id, month, year)
+                pdf_bytes = report_resp.body
+                
+                # We need some basic data for the WhatsApp notification text
+                # We can do a quick query for orders count and GMV
+                from sqlalchemy import func
+                from app.models import Order, OrderStatus
+                agg = await db.execute(select(func.count(Order.id), func.coalesce(func.sum(Order.total_price), 0)).where(Order.restaurant_id == restaurant.id, Order.status != OrderStatus.CANCELLED))
+                total_orders, total_gmv = agg.first()
+                total_orders = int(total_orders or 0)
+                total_gmv = float(total_gmv or 0.0)
 
                 if restaurant.contact_email and settings.RESEND_API_KEY:
                     email_payload = {
@@ -1518,3 +1520,78 @@ async def batch_dispatch_reports(
         "failed_ids": failed_ids,
         "dispatched_at": now.isoformat() + "Z",
     }
+
+
+@router.post("/reports/dispatch/{restaurant_id}")
+async def dispatch_single_report(
+    restaurant_id: int,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generates and dispatches a PDF monthly report for a single restaurant.
+    SuperAdmin only.
+    """
+    import base64
+    import calendar as _cal
+    import httpx as _httpx
+
+    now = datetime.utcnow()
+    month = month or now.month
+    year = year or now.year
+    month_name = _cal.month_name[month]
+
+    r = await db.execute(select(Restaurant).where(Restaurant.id == restaurant_id))
+    restaurant = r.scalar_one_or_none()
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    report_resp = await generate_monthly_insights_report(db, restaurant.id, month, year)
+    pdf_bytes = report_resp.body
+
+    from sqlalchemy import func
+    from app.models import Order, OrderStatus
+    agg = await db.execute(select(func.count(Order.id), func.coalesce(func.sum(Order.total_price), 0)).where(Order.restaurant_id == restaurant.id, Order.status != OrderStatus.CANCELLED))
+    total_orders, total_gmv = agg.first()
+    total_orders = int(total_orders or 0)
+    total_gmv = float(total_gmv or 0.0)
+
+    if restaurant.contact_email and settings.RESEND_API_KEY:
+        email_payload = {
+            "from": EmailService._get_from_header(),
+            "to": [restaurant.contact_email],
+            "subject": f"[GEQO] Rapport Mensuel — {month_name} {year} | {restaurant.name}",
+            "text": (
+                f"Bonjour,\n\nVeuillez trouver ci-joint votre rapport mensuel GEQO "
+                f"pour {month_name} {year}.\n\nMerci de votre confiance.\nL'équipe GEQO"
+            ),
+            "attachments": [{
+                "filename": f"geqo-rapport-{month:02d}-{year}.pdf",
+                "content": base64.b64encode(pdf_bytes).decode(),
+                "content_type": "application/pdf",
+            }],
+        }
+        async with _httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                json=email_payload,
+                headers=EmailService._get_resend_headers(),
+            )
+            resp.raise_for_status()
+
+    if restaurant.owner_wa_id and restaurant.api_token and restaurant.phone_number_id:
+        from app.services.whatsapp import WhatsAppService
+        wa = WhatsAppService(token=restaurant.api_token, phone_id=restaurant.phone_number_id)
+        await wa.send_text_message(
+            restaurant.owner_wa_id,
+            f"📊 *Rapport GEQO — {month_name} {year}*\n\n"
+            f"Bonjour ! Votre rapport mensuel pour *{restaurant.name}* a été envoyé "
+            f"à {restaurant.contact_email}.\n\n"
+            f"📦 Commandes : {total_orders}  |  "
+            f"💰 GMV : {total_gmv:.0f} MAD  |  "
+            f"💳 Solde : {restaurant.wallet_balance:.2f} MAD",
+        )
+
+    return {"message": "Report dispatched successfully"}
