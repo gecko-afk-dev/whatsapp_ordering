@@ -120,7 +120,18 @@ def parse_flow_token(flow_token: str) -> tuple[str, str, Optional[int]]:
 router = APIRouter()
 
 
-@router.post("/flow-endpoint")
+@router.post(
+    "/flow-endpoint",
+    tags=["Flows"],
+    summary="Meta Flow Endpoint",
+    description="""
+    Handle secure payload exchange and data fetching for WhatsApp Flows.
+
+    Features:
+    - **Meta Flow 4-digit driver PIN delivery verification**: Validates the PIN entered by the driver against the generated `delivery_pin` on the order.
+    - **`ORDER_DELIVERED` audit logging**: Emits an internal Phase A analytics event when a driver successfully completes a delivery using the PIN.
+    """
+)
 async def flow_data_exchange(request: Request):
     aes_key = None
     initial_vector = None

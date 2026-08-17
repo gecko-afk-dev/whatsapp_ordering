@@ -113,17 +113,17 @@ class Restaurant(Base):
     # Geo-Fencing & Delivery Fields
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    max_delivery_radius_km: Mapped[float] = mapped_column(Float, default=10.0)
+    max_delivery_radius_km: Mapped[float] = mapped_column(Float, default=10.0, doc="Maximum allowable delivery radius in kilometers for Haversine geo-fencing")
     base_delivery_fee: Mapped[float] = mapped_column(Float, default=10.0)
     per_km_delivery_fee: Mapped[float] = mapped_column(Float, default=2.0)
 
     # New fields for Phase 1
     status: Mapped[RestaurantStatus] = mapped_column(Enum(RestaurantStatus), default=RestaurantStatus.ACTIVE)
-    subscription_tier: Mapped[SubscriptionTier] = mapped_column(Enum(SubscriptionTier), default=SubscriptionTier.STARTER)
-    is_accepting_orders: Mapped[bool] = mapped_column(default=True)
+    subscription_tier: Mapped[SubscriptionTier] = mapped_column(Enum(SubscriptionTier), default=SubscriptionTier.STARTER, doc="Current GEQO platform subscription tier (STARTER, PRO, SCALE, MULTI)")
+    is_accepting_orders: Mapped[bool] = mapped_column(default=True, doc="Boolean flag controlling whether the restaurant can receive new inbound checkout requests")
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PAID)
     commission_rate: Mapped[float] = mapped_column(Float, default=0.20)  # 20%
-    wallet_balance: Mapped[float] = mapped_column(Float, default=0.0)
+    wallet_balance: Mapped[float] = mapped_column(Float, default=0.0, doc="Prepaid wallet balance in MAD. Deducted atomically during checkout (-3.00 MAD) for micro-tolls")
     address: Mapped[Optional[str]] = mapped_column(String(255))
     city: Mapped[Optional[str]] = mapped_column(String(100))
     cuisine_type: Mapped[Optional[str]] = mapped_column(String(50))
@@ -402,16 +402,16 @@ class EventLog(Base):
         String(64), nullable=True, index=True, unique=True
     )
     # e.g. "order.placed", "wallet.toll_charged", "menu.viewed"
-    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    event_type: Mapped[str] = mapped_column(String(60), index=True, doc="Phase A Analytics: Primary action identifier (e.g., order.placed, wallet.toll_charged)")
     # Tenant scoping — intentionally no FK to allow historical data survival
     restaurant_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
     # SHA-256(phone.strip() + salt) — pseudonymized at source, never raw PII
-    customer_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    customer_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True, doc="Phase A Analytics: Pseudonymized SHA-256 customer identifier for tracking behavior without raw PII")
     # Origin channel: "whatsapp" | "pwa" | "kds" | "system"
-    channel: Mapped[str] = mapped_column(String(20))
+    channel: Mapped[str] = mapped_column(String(20), doc="Phase A Analytics: Origination platform (e.g., whatsapp, pwa, kds)")
     # Typed event context — arbitrary structured payload
     payload: Mapped[Optional[dict]] = mapped_column(
-        JSONB().with_variant(JSON(), "sqlite"), nullable=True
+        JSONB().with_variant(JSON(), "sqlite"), nullable=True, doc="Phase A Analytics: Arbitrary structured context payload for the event"
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, index=True

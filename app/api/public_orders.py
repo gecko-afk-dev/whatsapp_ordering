@@ -74,7 +74,19 @@ async def verify_session_token(authorization: Optional[str] = Header(None)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired session token")
 
-@router.post("/orders/checkout")
+@router.post(
+    "/orders/checkout",
+    tags=["Public Orders"],
+    summary="Process Checkout",
+    description="""
+    Process an incoming order checkout request from the PWA.
+
+    Features:
+    - **Server-Side Authoritative Price Recalculation**: Ensures total prices and item costs cannot be spoofed by the client.
+    - **Haversine Geo-Fencing Validation**: Rejects delivery orders that fall outside the restaurant's maximum delivery radius.
+    - **Atomic -3.00 MAD Micro-Toll Wallet Deduction**: Atomically deducts a 3.00 MAD platform fee from the restaurant's prepaid NAPS/CMI wallet balance before confirming the order.
+    """
+)
 async def process_checkout(
     payload: CheckoutPayload,
     background_tasks: BackgroundTasks,

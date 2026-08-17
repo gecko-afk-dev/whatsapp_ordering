@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from sqlalchemy import and_, or_
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from jose import JWTError, jwt
 from app.core.database import AsyncSessionLocal
@@ -114,14 +114,14 @@ class CustomerSchema(BaseModel):
         from_attributes = True
 class OrderSchema(BaseModel):
     id: int
-    tracking_code: str
+    tracking_code: str = Field(..., description="Unique alphanumeric tracking code.", example="GQ-1042")
     restaurant_id: int
     customer_wa_id: str
     fulfillment_method: str
-    status: str
+    status: str = Field(..., description="Order status.", example="PREPARING")
     total_price: float
-    delivery_fee: Optional[float] = 0.0
-    delivery_pin: Optional[str] = None
+    delivery_fee: Optional[float] = Field(0.0, description="Delivery fee in MAD.", example=15.0)
+    delivery_pin: Optional[str] = Field(None, description="4-digit driver PIN for delivery verification.", example="5921")
     customer_notes: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -135,7 +135,7 @@ class OrderSchema(BaseModel):
 
 
 class StatusUpdateBody(BaseModel):
-    new_status: OrderStatus
+    new_status: OrderStatus = Field(..., description="The new order status (e.g. PREPARING, READY_FOR_DELIVERY, DELIVERED, CANCELLED).", example="PREPARING")
     driver_id: Optional[int] = None
 
 class DeliverySettingsUpdate(BaseModel):
@@ -148,7 +148,7 @@ class DeliverySettingsUpdate(BaseModel):
     city: Optional[str] = None
 
 class RestaurantStatusUpdate(BaseModel):
-    is_accepting_orders: bool
+    is_accepting_orders: bool = Field(..., description="Whether the restaurant is currently accepting new orders.", example=True)
 
 
 # ---------------------------------------------------------------------------
