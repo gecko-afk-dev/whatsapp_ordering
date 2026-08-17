@@ -8,7 +8,19 @@ from app.core.config import settings
 
 router = APIRouter()
 
-@router.get("/health")
+@router.get(
+    "/health",
+    tags=["Health"],
+    summary="System Health Check",
+    description="""
+    Deep Health Probe for monitoring and load balancers.
+
+    Checks:
+    - **PostgreSQL**: Executes a lightweight `SELECT 1` query to verify database connectivity and latency.
+    - **Redis**: Pings the configured Redis instance to verify cache/session store availability and latency.
+    - **Disk Space**: Measures available disk space to warn against storage exhaustion (returns 503 if under 5% free).
+    """
+)
 async def health_check(response: Response):
     """
     Deep Health Probe: Checks DB, Redis, and Disk Space.
@@ -25,7 +37,7 @@ async def health_check(response: Response):
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
         db_latency = round((time.perf_counter() - start) * 1000, 2)
-    except Exception as e:
+    except Exception:
         db_status = "down"
         health_status = "unhealthy"
         status_code = 503

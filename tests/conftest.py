@@ -20,7 +20,7 @@ TEST_DATABASE_URL = os.environ.get(
 async def check_pg_connection():
     engine = create_async_engine(TEST_DATABASE_URL)
     try:
-        async with engine.connect() as conn:
+        async with engine.connect():
             pass
         return True
     except Exception as e:
@@ -51,8 +51,7 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 # We must import Base and models after setting the environment
 from app.models import (
-    Base, Restaurant, User, UserRole, Category, MenuItem, ModifierGroup, ModifierOption, RestaurantStatus,
-    Order, OrderItem, OrderItemExclusion, OrderItemModifier, Cart, CartItem, Customer, Driver, WalletTransaction
+    Base, Restaurant, User, UserRole, Category, MenuItem, ModifierGroup, ModifierOption, RestaurantStatus
 )
 from app.core.auth import create_access_token
 from app.main import app

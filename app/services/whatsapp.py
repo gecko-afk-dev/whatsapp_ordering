@@ -1,7 +1,6 @@
 import httpx
 import logging
 from app.core.config import settings
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

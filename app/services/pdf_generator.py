@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from fastapi import HTTPException
 
-from app.models import Restaurant, Order, OrderStatus, OrderItem, MenuItem, EventLog
+from app.models import Restaurant, Order, OrderStatus, OrderItem, MenuItem
 
 logger = logging.getLogger(__name__)
 

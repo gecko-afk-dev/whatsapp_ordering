@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Rate Limiter ---
-import time
 try:
     # Modern redis-py >= 4.2.0 includes asyncio support directly
     import redis.asyncio as redis_async
@@ -165,7 +164,19 @@ async def get_cart(db, wa_id: str, restaurant_id: int):
     return q.scalar_one_or_none()
 
 
-@router.post("/webhook")
+@router.post(
+    "/webhook",
+    tags=["Webhook"],
+    summary="Meta WhatsApp Webhook",
+    description="""
+    Receive and process inbound messages and status updates from the Meta WhatsApp Cloud API.
+
+    Features:
+    - **Meta WhatsApp Cloud API signature verification (`X-Hub-Signature-256`)**: Validates the payload originated from Meta.
+    - **Inbound message gating & idempotency**: Deduplicates concurrent webhook deliveries and filters out unhandled media or system messages.
+    - **72-hour CTWA free window detection**: Tracks inbound interactions from Click-To-WhatsApp Ads to grant the 72-hour free messaging window.
+    """
+)
 async def handle_events(request: Request):
     raw_body = await request.body()
     if not verify_webhook_signature(request, raw_body):
@@ -202,7 +213,7 @@ async def handle_events(request: Request):
         message = value["messages"][0]
         
         # Check for message echoes (SMB app)
-        is_smb_echo = value.get("smb_message_echoes") or message.get("is_echo") == True or message.get("from") == phone_id
+        is_smb_echo = value.get("smb_message_echoes") or message.get("is_echo") or message.get("from") == phone_id
         if is_smb_echo:
             logger.info("whatsapp.manual_echo: Ignored manual echo from SMB app.")
             return Response(status_code=200)

@@ -2,7 +2,6 @@ import logging
 from typing import Optional
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
-from sqlalchemy import delete
 import os
 import json
 import base64
@@ -10,9 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 from app.core.database import AsyncSessionLocal
 from app.models import (
-    Category, MenuItem, Customer, Restaurant, RestaurantStatus, 
-    Cart, CartItem, CartItemExclusion, CartItemModifier,
-    ModifierGroup, Order, OrderStatus, Driver
+    Customer, Order, OrderStatus, Driver
 )
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
@@ -120,7 +117,18 @@ def parse_flow_token(flow_token: str) -> tuple[str, str, Optional[int]]:
 router = APIRouter()
 
 
-@router.post("/flow-endpoint")
+@router.post(
+    "/flow-endpoint",
+    tags=["Flows"],
+    summary="Meta Flow Endpoint",
+    description="""
+    Handle secure payload exchange and data fetching for WhatsApp Flows.
+
+    Features:
+    - **Meta Flow 4-digit driver PIN delivery verification**: Validates the PIN entered by the driver against the generated `delivery_pin` on the order.
+    - **`ORDER_DELIVERED` audit logging**: Emits an internal Phase A analytics event when a driver successfully completes a delivery using the PIN.
+    """
+)
 async def flow_data_exchange(request: Request):
     aes_key = None
     initial_vector = None

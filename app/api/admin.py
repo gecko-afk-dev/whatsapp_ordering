@@ -1,3 +1,6 @@
+import io
+import csv
+from fastapi.responses import StreamingResponse
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Header, Response
 import os
 import re
@@ -125,9 +128,9 @@ class BillingAdjustRequest(BaseModel):
 class WalletTransactionResponse(BaseModel):
     id: int
     restaurant_id: int
-    amount: float
-    type: str
-    description: Optional[str]
+    amount: float = Field(..., description="Transaction amount. Can be negative (-3.00 MAD micro-toll deduction) or positive (+149 MAD top-up).", example=-3.00)
+    type: str = Field(..., description="Transaction type. CREDIT for top-ups, DEDUCTION for tolls/fees.", example="DEDUCTION")
+    description: Optional[str] = Field(None, description="Context for the transaction.", example="Order GQ-1042 toll")
     created_at: datetime
 
     class Config:
@@ -613,7 +616,7 @@ async def adjust_billing(
         
         await db.commit()
         
-        return {"message": f"Successfully adjusted wallet", "wallet_balance": restaurant.wallet_balance}
+        return {"message": "Successfully adjusted wallet", "wallet_balance": restaurant.wallet_balance}
 
 @router.put("/restaurants/{restaurant_id}")
 async def update_restaurant(
@@ -1060,7 +1063,7 @@ async def list_pending_beta_signups(
         result = await db.execute(
             select(BetaSignupModel)
             .options(joinedload(BetaSignupModel.card))
-            .where(BetaSignupModel.provisioned == False)
+            .where(BetaSignupModel.provisioned == False)  # noqa: E712
             .order_by(BetaSignupModel.created_at.desc())
         )
         signups = result.scalars().all()
@@ -1179,9 +1182,6 @@ async def provision_beta_signup(
 # SuperAdmin Insights — CRM Export, PDF Preview & Batch Dispatch
 # ---------------------------------------------------------------------------
 
-import io
-import csv
-from fastapi.responses import StreamingResponse
 
 
 def _build_monthly_report_pdf(
@@ -1404,7 +1404,12 @@ async def export_crm_csv(
     )
 
 
-@router.get("/reports/preview/{restaurant_id}")
+@router.get(
+    "/reports/preview/{restaurant_id}",
+    tags=["Admin Reports"],
+    summary="SuperAdmin PDF Insights Preview",
+    description="Stream a preview of the monthly SuperAdmin PDF Insights report for a specific restaurant tenant."
+)
 async def preview_restaurant_report(
     restaurant_id: int,
     month: Optional[int] = None,
@@ -1425,7 +1430,12 @@ class BatchDispatchRequest(BaseModel):
     year: Optional[int] = None
 
 
-@router.post("/reports/batch-dispatch")
+@router.post(
+    "/reports/batch-dispatch",
+    tags=["Admin Reports"],
+    summary="SuperAdmin PDF Insights Batch Dispatch",
+    description="Trigger a bulk background dispatch of monthly SuperAdmin PDF Insights reports to all active restaurant tenants via email or WhatsApp."
+)
 async def batch_dispatch_reports(
     body: BatchDispatchRequest,
     current_user: User = Depends(get_current_admin),
@@ -1502,8 +1512,8 @@ async def batch_dispatch_reports(
                         f"📊 *Rapport GEQO — {month_name} {year}*\n\n"
                         f"Bonjour ! Votre rapport mensuel pour *{restaurant.name}* a été envoyé "
                         f"à {restaurant.contact_email}.\n\n"
-                        f"📦 Commandes : {data['total_orders']}  |  "
-                        f"💰 GMV : {data['total_gmv']:.0f} MAD  |  "
+                        f"📦 Commandes : {total_orders}  |  "
+                        f"💰 GMV : {total_gmv:.0f} MAD  |  "
                         f"💳 Solde : {restaurant.wallet_balance:.2f} MAD",
                     )
 

@@ -1,5 +1,4 @@
 import pytest
-import urllib.parse
 
 @pytest.mark.asyncio
 async def test_public_menu_hierarchy(async_client, seed_menu, seed_restaurant):

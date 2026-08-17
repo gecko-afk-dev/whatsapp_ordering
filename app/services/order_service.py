@@ -166,7 +166,8 @@ class OrderService:
                 selectinload(Order.items).selectinload(OrderItem.menu_item)
             ))
             order = res.scalar_one_or_none()
-            if not order: return
+            if not order:
+                return
 
             summary = None
             if status == "accepted" and order.items:
