@@ -1,8 +1,7 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from sqlalchemy.future import select
-from sqlalchemy.orm import joinedload
 from app.core.database import AsyncSessionLocal
-from app.models import Restaurant, RestaurantStatus, Category, MenuItem, ModifierGroup, ModifierOption
+from app.models import Restaurant, RestaurantStatus, Category, MenuItem, ModifierGroup
 from app.services.hours import is_restaurant_open
 
 router = APIRouter()

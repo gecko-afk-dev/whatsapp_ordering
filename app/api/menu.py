@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from typing import Optional
 from app.core.database import AsyncSessionLocal
 from app.core.auth import get_manager_or_admin, User, UserRole
-from app.models import Category, MenuItem, ModifierGroup, ModifierOption, ModifierGroupType
+from app.models import Category, MenuItem, ModifierGroup, ModifierOption
 from app.services.audit import log_audit_action
 
 router = APIRouter()
@@ -357,10 +357,14 @@ async def update_category(cat_id: int, data: CategoryUpdate, current_user: User 
             raise HTTPException(status_code=404, detail="Category not found")
         await check_restaurant_access(db, current_user, cat.restaurant_id)
         
-        if data.name_en is not None: cat.name_en = data.name_en
-        if data.name_ar is not None: cat.name_ar = data.name_ar
-        if data.name_fr is not None: cat.name_fr = data.name_fr
-        if data.image_url is not None: cat.image_url = await upload_image_to_cloud(data.image_url)
+        if data.name_en is not None:
+            cat.name_en = data.name_en
+        if data.name_ar is not None:
+            cat.name_ar = data.name_ar
+        if data.name_fr is not None:
+            cat.name_fr = data.name_fr
+        if data.image_url is not None:
+            cat.image_url = await upload_image_to_cloud(data.image_url)
         
         await db.commit()
         await db.refresh(cat)
@@ -377,13 +381,20 @@ async def update_item(item_id: int, data: MenuItemUpdate, current_user: User = D
             raise HTTPException(status_code=404, detail="Item not found")
         await check_restaurant_access(db, current_user, item.category.restaurant_id)
         
-        if data.name_en is not None: item.name_en = data.name_en
-        if data.name_ar is not None: item.name_ar = data.name_ar
-        if data.name_fr is not None: item.name_fr = data.name_fr
-        if data.price is not None: item.price = data.price
-        if data.item_details is not None: item.item_details = data.item_details
-        if data.image_url is not None: item.image_url = await upload_image_to_cloud(data.image_url)
-        if data.is_available is not None: item.is_available = data.is_available
+        if data.name_en is not None:
+            item.name_en = data.name_en
+        if data.name_ar is not None:
+            item.name_ar = data.name_ar
+        if data.name_fr is not None:
+            item.name_fr = data.name_fr
+        if data.price is not None:
+            item.price = data.price
+        if data.item_details is not None:
+            item.item_details = data.item_details
+        if data.image_url is not None:
+            item.image_url = await upload_image_to_cloud(data.image_url)
+        if data.is_available is not None:
+            item.is_available = data.is_available
         
         await db.commit()
         await db.refresh(item)
@@ -405,12 +416,18 @@ async def update_modifier_group(group_id: int, data: ModifierGroupUpdate, curren
         res_id = group.menu_item.category.restaurant_id if group.menu_item else group.category.restaurant_id
         await check_restaurant_access(db, current_user, res_id)
         
-        if data.name_en is not None: group.name_en = data.name_en
-        if data.name_ar is not None: group.name_ar = data.name_ar
-        if data.name_fr is not None: group.name_fr = data.name_fr
-        if data.min_selection is not None: group.min_selection = data.min_selection
-        if data.max_selection is not None: group.max_selection = data.max_selection
-        if data.group_type is not None: group.group_type = data.group_type
+        if data.name_en is not None:
+            group.name_en = data.name_en
+        if data.name_ar is not None:
+            group.name_ar = data.name_ar
+        if data.name_fr is not None:
+            group.name_fr = data.name_fr
+        if data.min_selection is not None:
+            group.min_selection = data.min_selection
+        if data.max_selection is not None:
+            group.max_selection = data.max_selection
+        if data.group_type is not None:
+            group.group_type = data.group_type
         
         await db.commit()
         await db.refresh(group)
@@ -433,11 +450,16 @@ async def update_modifier_option(opt_id: int, data: ModifierOptionUpdate, curren
         res_id = group.menu_item.category.restaurant_id if group.menu_item else group.category.restaurant_id
         await check_restaurant_access(db, current_user, res_id)
         
-        if data.name_en is not None: opt.name_en = data.name_en
-        if data.name_ar is not None: opt.name_ar = data.name_ar
-        if data.name_fr is not None: opt.name_fr = data.name_fr
-        if data.price_override is not None: opt.price_override = data.price_override
-        if data.is_available is not None: opt.is_available = data.is_available
+        if data.name_en is not None:
+            opt.name_en = data.name_en
+        if data.name_ar is not None:
+            opt.name_ar = data.name_ar
+        if data.name_fr is not None:
+            opt.name_fr = data.name_fr
+        if data.price_override is not None:
+            opt.price_override = data.price_override
+        if data.is_available is not None:
+            opt.is_available = data.is_available
         
         await db.commit()
         await db.refresh(opt)

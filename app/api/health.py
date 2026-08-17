@@ -37,7 +37,7 @@ async def health_check(response: Response):
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
         db_latency = round((time.perf_counter() - start) * 1000, 2)
-    except Exception as e:
+    except Exception:
         db_status = "down"
         health_status = "unhealthy"
         status_code = 503

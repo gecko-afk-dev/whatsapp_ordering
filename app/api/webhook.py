@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Rate Limiter ---
-import time
 try:
     # Modern redis-py >= 4.2.0 includes asyncio support directly
     import redis.asyncio as redis_async
@@ -214,7 +213,7 @@ async def handle_events(request: Request):
         message = value["messages"][0]
         
         # Check for message echoes (SMB app)
-        is_smb_echo = value.get("smb_message_echoes") or message.get("is_echo") == True or message.get("from") == phone_id
+        is_smb_echo = value.get("smb_message_echoes") or message.get("is_echo") or message.get("from") == phone_id
         if is_smb_echo:
             logger.info("whatsapp.manual_echo: Ignored manual echo from SMB app.")
             return Response(status_code=200)

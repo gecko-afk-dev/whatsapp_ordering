@@ -1,7 +1,7 @@
 import random
 import string
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body, BackgroundTasks, Query, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -14,7 +14,7 @@ from app.core.auth import (
     SECRET_KEY, ALGORITHM, get_current_cashier_or_above, get_current_kitchen_or_above,
     get_current_user, assert_restaurant_access
 )
-from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier, ModifierOption, OrderItemExclusion, SubscriptionTier
+from app.models import Order, OrderStatus, OrderItem, MenuItem, Customer, User, UserRole, Category, FulfillmentMethod, Driver, Restaurant, OrderItemModifier, SubscriptionTier
 
 from app.services.order_service import OrderService
 from app.services.socket_manager import manager
@@ -27,7 +27,6 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Pydantic response schemas
 # ---------------------------------------------------------------------------
-from typing import Any
 
 class MenuItemCompactSchema(BaseModel):
     name_en: str

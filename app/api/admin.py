@@ -1,3 +1,6 @@
+import io
+import csv
+from fastapi.responses import StreamingResponse
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Header, Response
 import os
 import re
@@ -613,7 +616,7 @@ async def adjust_billing(
         
         await db.commit()
         
-        return {"message": f"Successfully adjusted wallet", "wallet_balance": restaurant.wallet_balance}
+        return {"message": "Successfully adjusted wallet", "wallet_balance": restaurant.wallet_balance}
 
 @router.put("/restaurants/{restaurant_id}")
 async def update_restaurant(
@@ -1060,7 +1063,7 @@ async def list_pending_beta_signups(
         result = await db.execute(
             select(BetaSignupModel)
             .options(joinedload(BetaSignupModel.card))
-            .where(BetaSignupModel.provisioned == False)
+            .where(BetaSignupModel.provisioned == False)  # noqa: E712
             .order_by(BetaSignupModel.created_at.desc())
         )
         signups = result.scalars().all()
@@ -1179,9 +1182,6 @@ async def provision_beta_signup(
 # SuperAdmin Insights — CRM Export, PDF Preview & Batch Dispatch
 # ---------------------------------------------------------------------------
 
-import io
-import csv
-from fastapi.responses import StreamingResponse
 
 
 def _build_monthly_report_pdf(
@@ -1512,8 +1512,8 @@ async def batch_dispatch_reports(
                         f"📊 *Rapport GEQO — {month_name} {year}*\n\n"
                         f"Bonjour ! Votre rapport mensuel pour *{restaurant.name}* a été envoyé "
                         f"à {restaurant.contact_email}.\n\n"
-                        f"📦 Commandes : {data['total_orders']}  |  "
-                        f"💰 GMV : {data['total_gmv']:.0f} MAD  |  "
+                        f"📦 Commandes : {total_orders}  |  "
+                        f"💰 GMV : {total_gmv:.0f} MAD  |  "
                         f"💳 Solde : {restaurant.wallet_balance:.2f} MAD",
                     )
 

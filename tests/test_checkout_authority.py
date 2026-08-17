@@ -1,5 +1,4 @@
 import pytest
-from app.models import OrderStatus
 from app.core.auth import create_access_token
 
 def get_auth_headers(wa_id: str, restaurant_id: int):

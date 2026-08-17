@@ -3,7 +3,7 @@ import hmac
 import hashlib
 import json
 from app.core.config import settings
-from app.models import RestaurantStatus, Customer
+from app.models import Customer
 
 def get_webhook_signature(payload: dict) -> str:
     secret = settings.WHATSAPP_APP_SECRET

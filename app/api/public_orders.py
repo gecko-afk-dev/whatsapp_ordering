@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models import (
     Restaurant, Order, OrderItem, OrderItemExclusion, OrderItemModifier,
-    MenuItem, Category, ModifierOption, ModifierGroup, OrderStatus, FulfillmentMethod, Customer,
+    MenuItem, Category, ModifierGroup, OrderStatus, FulfillmentMethod, Customer,
     WalletTransaction, TransactionType
 )
 from app.services.socket_manager import manager

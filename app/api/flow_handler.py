@@ -2,7 +2,6 @@ import logging
 from typing import Optional
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
-from sqlalchemy import delete
 import os
 import json
 import base64
@@ -10,9 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 from app.core.database import AsyncSessionLocal
 from app.models import (
-    Category, MenuItem, Customer, Restaurant, RestaurantStatus, 
-    Cart, CartItem, CartItemExclusion, CartItemModifier,
-    ModifierGroup, Order, OrderStatus, Driver
+    Customer, Order, OrderStatus, Driver
 )
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService

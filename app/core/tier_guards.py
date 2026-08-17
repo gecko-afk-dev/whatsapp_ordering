@@ -28,7 +28,7 @@ def require_feature(feature_name: str):
 async def check_delivery_agent_limit(restaurant: Restaurant, db: AsyncSession):
     res = await db.execute(
         select(func.count(Driver.id))
-        .where(Driver.restaurant_id == restaurant.id, Driver.is_active == True)
+        .where(Driver.restaurant_id == restaurant.id, Driver.is_active)
     )
     active_count = res.scalar() or 0
     if active_count >= restaurant.max_delivery_agents():
