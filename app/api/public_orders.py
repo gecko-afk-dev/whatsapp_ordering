@@ -3,7 +3,7 @@ import logging
 import time
 from typing import List, Optional, Union
 from collections import Counter
-from fastapi import APIRouter, HTTPException, Header, Depends, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, Header, Depends, BackgroundTasks, Request, Cookie
 from pydantic import BaseModel, field_validator
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -64,10 +64,25 @@ class CheckoutPayload(BaseModel):
     customer_notes: Optional[str] = None
     items: List[CartItemPayload]
 
-async def verify_session_token(authorization: Optional[str] = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    token = authorization.split(" ")[1]
+async def verify_session_token(
+    geqo_session: Optional[str] = Cookie(default=None),
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Accepts the session JWT from either:
+    1. The HttpOnly `geqo_session` cookie (stamped by middleware on magic-link arrival) — preferred.
+    2. The `Authorization: Bearer <token>` header — fallback for legacy clients.
+    """
+    token: Optional[str] = None
+
+    if geqo_session:
+        token = geqo_session
+    elif authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing session. Please request a new Magic Link.")
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         return payload
