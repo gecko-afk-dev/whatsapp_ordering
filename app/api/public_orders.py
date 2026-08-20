@@ -1,10 +1,10 @@
 import math
 import logging
 import time
-from typing import List, Optional
+from typing import List, Optional, Union
 from collections import Counter
 from fastapi import APIRouter, HTTPException, Header, Depends, BackgroundTasks, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.future import select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
@@ -341,9 +341,19 @@ async def process_checkout(
 class BeaconPayload(BaseModel):
     event_id: Optional[str] = None
     event_type: str
-    restaurant_id: int
+    restaurant_id: Union[int, str]  # Accepts numeric ID or string slug (e.g. "resto-1")
     channel: str = "pwa"
     payload: Optional[dict] = None
+
+    @field_validator('restaurant_id', mode='before')
+    @classmethod
+    def coerce_restaurant_id(cls, v: Union[int, str]) -> Union[int, str]:
+        """Accept both integer IDs and non-numeric slugs. Numeric strings are coerced to int."""
+        if isinstance(v, int):
+            return v
+        if isinstance(v, str) and v.strip().lstrip('-').isdigit():
+            return int(v)
+        return v  # Return as slug string — resolved to int in the endpoint
 
 
 @router.post("/events")
@@ -375,12 +385,29 @@ async def client_event_beacon(
             detail=f"Event type '{body.event_type}' is not allowed on this endpoint.",
         )
 
+    # --- Resolve slug string to numeric restaurant_id if needed ---
+    resolved_restaurant_id: int
+    if isinstance(body.restaurant_id, str):
+        async with AsyncSessionLocal() as slug_db:
+            slug_res = await slug_db.execute(
+                select(Restaurant.id).where(Restaurant.slug == body.restaurant_id)
+            )
+            found_id = slug_res.scalar_one_or_none()
+        if not found_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Restaurant with slug '{body.restaurant_id}' not found.",
+            )
+        resolved_restaurant_id = found_id
+    else:
+        resolved_restaurant_id = body.restaurant_id
+
     # --- Enqueue (non-blocking, response returns immediately) ---
     queue_event(
         background_tasks,
         event_type=body.event_type,
         channel="pwa",
-        restaurant_id=body.restaurant_id,
+        restaurant_id=resolved_restaurant_id,
         payload=body.payload or {},
         event_id=body.event_id,
     )
