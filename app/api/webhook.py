@@ -72,10 +72,15 @@ def generate_magic_link(wa_id: str, restaurant) -> str:
     }
     from app.core.config import settings
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-    # Use white-label subdomain if slug is set, fall back to legacy URL
-    if restaurant.slug:
-        return f"https://{restaurant.slug}.mygeqo.com/?session={token}"
-    return f"https://menu.mygeqo.com/menu/{restaurant.id}?session={token}"
+    # Magic Link URL Construction Failsafe:
+    if getattr(restaurant, 'custom_domain', None):
+        base_url = f"https://{restaurant.custom_domain}"
+    elif restaurant.slug and restaurant.slug.strip():
+        base_url = f"https://{restaurant.slug.strip()}.mygeqo.com"
+    else:
+        base_url = f"https://menu.mygeqo.com/menu/{restaurant.id}"
+        
+    return f"{base_url}/?session={token}"
 
 async def check_and_send_magic_link(wa_service, wa_id: str, customer, restaurant) -> bool:
     from app.services.hours import is_restaurant_open
