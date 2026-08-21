@@ -29,33 +29,23 @@ async def global_exception_handler(request, exc):
         content={"detail": "An internal server error occurred. Our engineering team has been notified."},
     )
 
-# CORS for Frontend — only allow explicit origins, reject wildcards
-origins = []
-if settings.ALLOWED_ORIGINS and settings.ALLOWED_ORIGINS.strip():
-    origins = [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
-
-# Reject wildcard origins in production-like setups
-if "*" in origins:
-    logger.warning("WARNING: Wildcard CORS origin detected. This is insecure in production.")
-
-allow_credentials = len(origins) > 0 and "*" not in origins
+origins = [
+    "https://mygeqo.com",
+    "https://www.mygeqo.com",
+    "https://app.mygeqo.com",
+    "https://menu.mygeqo.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000"
+]
 
 app.add_middleware(
     CORSMiddleware,
-    # Hardcoding the origins is safer for your MVP to avoid env parsing errors
-    allow_origins=[
-        "http://localhost:8000",
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://app.mygeqo.com",
-        "https://mygeqo.com",
-        "https://www.mygeqo.com",
-        "https://menu.mygeqo.com"
-    ],
-    allow_origin_regex=r"https://.*\.mygeqo\.com",
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.mygeqo\.com", # Dynamically matches all *.mygeqo.com subdomains
     allow_credentials=True,
-    allow_methods=["*"], # The "*" allows GET, POST, PUT, DELETE, and the crucial OPTIONS
-    allow_headers=["*"], # The "*" ensures Axios can send tokens without being blocked
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.middleware("http")
