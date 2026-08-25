@@ -203,6 +203,28 @@ class EmailService:
         return await EmailService._send_email_with_retries(email, subject, text_content, html_content)
 
     @staticmethod
+    async def send_admin_data_deletion_notification(phone_number: str, reason: str, request_id: int):
+        """Notifies compliance admin of a new CNDP data-deletion request (30-day SLA)."""
+        subject = f"🗑️ Data Deletion Request #{request_id} — action required within 30 days"
+        text_content = (
+            f"A customer has requested erasure of their personal data under CNDP Law 09-08.\n\n"
+            f"Request ID: {request_id}\n"
+            f"Phone number: {phone_number}\n"
+            f"Reason: {reason}\n\n"
+            f"This request must be fulfilled within 30 days of submission."
+        )
+        html_content = (
+            f"<p>A customer has requested erasure of their personal data under CNDP Law 09-08.</p>"
+            f"<ul>"
+            f"<li><strong>Request ID:</strong> {request_id}</li>"
+            f"<li><strong>Phone number:</strong> {phone_number}</li>"
+            f"<li><strong>Reason:</strong> {reason}</li>"
+            f"</ul>"
+            f"<p>This request must be fulfilled within <strong>30 days</strong> of submission.</p>"
+        )
+        return await EmailService._send_email_with_retries(settings.ADMIN_NOTIFICATION_EMAIL, subject, text_content, html_content)
+
+    @staticmethod
     async def send_password_reset_email(email: str, reset_token: str):
         # URL format: /?reset_token= matching app.js URLSearchParams check
         reset_link = f"https://app.mygeqo.com/?reset_token={reset_token}"

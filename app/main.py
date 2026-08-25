@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
-from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth, beta, public_menu, public_orders, health
+from app.api import webhook, dashboard, flow_handler, admin, menu, drivers, auth, beta, public_menu, public_orders, health, compliance
 from app.core.logging_config import setup_logging
 
 logger = setup_logging()
@@ -84,6 +84,9 @@ app.include_router(beta.router, prefix="/api/v1/public")
 # 9. Public PWA Menu & Orders
 app.include_router(public_menu.router, prefix="/api/v1/public")
 app.include_router(public_orders.router, prefix="/api/v1/public")
+
+# 9b. Public Compliance (CNDP data-deletion requests)
+app.include_router(compliance.router, prefix="/api/v1/public")
 
 # 10. Health Check (available at both root and /api/v1/health)
 app.include_router(health.router)

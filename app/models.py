@@ -67,6 +67,10 @@ class SubscriptionTier(PyEnum):
     SCALE = "SCALE"
     MULTI = "MULTI"
 
+class DataDeletionStatus(PyEnum):
+    PENDING = "pending"      # Received, within the 30-day CNDP SLA window
+    COMPLETED = "completed"  # Erasure performed and confirmed by an admin
+
 # --- Tables ---
 
 class WalletTransaction(Base):
@@ -377,6 +381,26 @@ class BetaSignup(Base):
     confirmation_sent: Mapped[bool] = mapped_column(default=False)
     provisioned: Mapped[bool] = mapped_column(default=False)
     card: Mapped["BetaCard"] = relationship(back_populates="signup")
+
+
+class DataDeletionRequest(Base):
+    """
+    CNDP Law 09-08 erasure request audit trail. Created by
+    POST /api/v1/public/data-deletion-request. Not tenant-scoped — a
+    customer's phone number may have ordered from multiple restaurants,
+    so fulfillment is a platform-level admin action, not a per-restaurant one.
+    """
+    __tablename__ = "data_deletion_requests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone_number: Mapped[str] = mapped_column(String(20), index=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # native_enum=False: stored as VARCHAR + CHECK constraint, matching this repo's
+    # existing precedent for subscription_tier (see migrate_add_subscription_tier.py) —
+    # avoids a Postgres CREATE TYPE/ALTER TYPE dependency for a low-cardinality status field.
+    status: Mapped[DataDeletionStatus] = mapped_column(Enum(DataDeletionStatus, native_enum=False, length=20), default=DataDeletionStatus.PENDING, index=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 # ---------------------------------------------------------------------------
