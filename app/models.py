@@ -126,7 +126,6 @@ class Restaurant(Base):
     subscription_tier: Mapped[SubscriptionTier] = mapped_column(Enum(SubscriptionTier), default=SubscriptionTier.STARTER, doc="Current GEQO platform subscription tier (STARTER, PRO, SCALE, MULTI)")
     is_accepting_orders: Mapped[bool] = mapped_column(default=True, doc="Boolean flag controlling whether the restaurant can receive new inbound checkout requests")
     payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.PAID)
-    commission_rate: Mapped[float] = mapped_column(Float, default=0.20)  # 20%
     wallet_balance: Mapped[float] = mapped_column(Float, default=0.0, doc="Prepaid wallet balance in MAD. Deducted atomically during checkout (-3.00 MAD) for micro-tolls")
     address: Mapped[Optional[str]] = mapped_column(String(255))
     city: Mapped[Optional[str]] = mapped_column(String(100))
