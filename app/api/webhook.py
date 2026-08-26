@@ -320,11 +320,21 @@ async def handle_events(request: Request):
                         order_id = int(order_id_str)
                         driver_id = int(driver_id_str)
                         
-                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = await db.execute(
+                            select(Order).where(
+                                Order.id == order_id,
+                                Order.restaurant_id == restaurant.id,
+                            )
+                        )
                         order = order.scalar_one_or_none()
                         if order:
                             from app.models import Driver
-                            driver = await db.execute(select(Driver).where(Driver.id == driver_id))
+                            driver = await db.execute(
+                                select(Driver).where(
+                                    Driver.id == driver_id,
+                                    Driver.restaurant_id == restaurant.id,
+                                )
+                            )
                             driver = driver.scalar_one_or_none()
                             
                             if driver:
@@ -506,7 +516,12 @@ async def handle_events(request: Request):
 
                     elif btn_id.startswith("mgr_accept_"):
                         order_id = int(btn_id.split("_")[2])
-                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = await db.execute(
+                            select(Order).where(
+                                Order.id == order_id,
+                                Order.restaurant_id == restaurant.id,
+                            )
+                        )
                         order = order.scalar_one_or_none()
                         if order:
                             order.status = OrderStatus.PREPARING
@@ -549,7 +564,12 @@ async def handle_events(request: Request):
 
                     elif btn_id.startswith("mgr_reject_"):
                         order_id = int(btn_id.split("_")[2])
-                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = await db.execute(
+                            select(Order).where(
+                                Order.id == order_id,
+                                Order.restaurant_id == restaurant.id,
+                            )
+                        )
                         order = order.scalar_one_or_none()
                         if order:
                             order.status = OrderStatus.CANCELLED
@@ -561,7 +581,12 @@ async def handle_events(request: Request):
 
                     elif btn_id.startswith("mgr_ready_"):
                         order_id = int(btn_id.split("_")[2])
-                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = await db.execute(
+                            select(Order).where(
+                                Order.id == order_id,
+                                Order.restaurant_id == restaurant.id,
+                            )
+                        )
                         order = order.scalar_one_or_none()
                         if order:
                             order.status = OrderStatus.READY
@@ -573,6 +598,15 @@ async def handle_events(request: Request):
 
                     elif btn_id.startswith("mgr_dispatch_"):
                         order_id = int(btn_id.split("_")[2])
+                        order_check = await db.execute(
+                            select(Order).where(
+                                Order.id == order_id,
+                                Order.restaurant_id == restaurant.id,
+                            )
+                        )
+                        if order_check.scalar_one_or_none() is None:
+                            return Response(status_code=200)
+
                         from app.models import Driver
                         drivers_req = await db.execute(select(Driver).where(Driver.restaurant_id == restaurant.id, Driver.is_active))
                         drivers = drivers_req.scalars().all()
@@ -602,7 +636,12 @@ async def handle_events(request: Request):
                     elif btn_id.startswith("drv_delivered_"):
                         # We are moving delivery confirmation to the Flow PIN entry, but keeping this as a fallback if needed.
                         order_id = int(btn_id.split("_")[2])
-                        order = await db.execute(select(Order).where(Order.id == order_id))
+                        order = await db.execute(
+                            select(Order).where(
+                                Order.id == order_id,
+                                Order.restaurant_id == restaurant.id,
+                            )
+                        )
                         order = order.scalar_one_or_none()
                         if order:
                             order.status = OrderStatus.DELIVERED
@@ -619,10 +658,21 @@ async def handle_events(request: Request):
                     elif btn_id.startswith("claim_order_"):
                         order_id = int(btn_id.split("_")[2])
                         from app.models import Driver
-                        driver_req = await db.execute(select(Driver).where(Driver.wa_id == wa_id, Driver.is_active))
+                        driver_req = await db.execute(
+                            select(Driver).where(
+                                Driver.wa_id == wa_id,
+                                Driver.is_active,
+                                Driver.restaurant_id == restaurant.id,
+                            )
+                        )
                         driver = driver_req.scalar_one_or_none()
                         if driver:
-                            order_req = await db.execute(select(Order).where(Order.id == order_id))
+                            order_req = await db.execute(
+                                select(Order).where(
+                                    Order.id == order_id,
+                                    Order.restaurant_id == restaurant.id,
+                                )
+                            )
                             order = order_req.scalar_one_or_none()
                             if order and order.driver_id is None and order.status == OrderStatus.DISPATCHED:
                                 # Claim the order
