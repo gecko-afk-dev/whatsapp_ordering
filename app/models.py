@@ -170,6 +170,14 @@ class Customer(Base):
     name: Mapped[Optional[str]] = mapped_column(String(100))
     language: Mapped[Optional[str]] = mapped_column(String(5))
     ctwa_free_window_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True, nullable=True)
+    marketing_opt_in: Mapped[bool] = mapped_column(
+        default=False,
+        doc="Consent to receive marketing/promotional WhatsApp messages. "
+            "Captured at PWA checkout, unchecked by default (CNDP-compliant "
+            "opt-in, not opt-out). Independent of data-deletion requests — "
+            "opting out of marketing does NOT delete the customer's data; "
+            "see DataDeletionRequest for that separate flow."
+    )
 
 class Category(Base):
     __tablename__ = "categories"
@@ -244,7 +252,14 @@ class Order(Base):
     customer_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     customer_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
+    terms_accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True,
+        doc="Timestamp this specific order's Terms of Service checkbox was "
+            "accepted. Stored per-order (not just per-customer) so it stands "
+            "as its own evidence of a valid electronic contract under Law "
+            "53-05, independent of whether the customer's consent later changes."
+    )
+
     # Use strings "Restaurant" etc. to avoid NameErrors
     restaurant: Mapped["Restaurant"] = relationship(back_populates="orders")
     items: Mapped[List["OrderItem"]] = relationship(
@@ -365,6 +380,15 @@ class BetaCard(Base):
     status: Mapped[BetaCardStatus] = mapped_column(Enum(BetaCardStatus), default=BetaCardStatus.AVAILABLE)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    trial_days: Mapped[int] = mapped_column(
+        default=14,
+        doc="Trial length granted when this specific card is claimed. Publicly "
+            "distributed cards default to 14 days; hand-pitched MVP-launch "
+            "cards can be set to 30 by updating this column for that card "
+            "before it's handed out. Snapshotted onto BetaSignup.trial_ends_at "
+            "at claim time, so later changing this default doesn't retroactively "
+            "affect already-claimed signups."
+    )
     signup: Mapped[Optional["BetaSignup"]] = relationship(back_populates="card")
 
 class BetaSignup(Base):
@@ -379,6 +403,13 @@ class BetaSignup(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     confirmation_sent: Mapped[bool] = mapped_column(default=False)
     provisioned: Mapped[bool] = mapped_column(default=False)
+    trial_ends_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True,
+        doc="Snapshot of card.trial_days added to the claim timestamp. Tracking "
+            "only for now — nothing currently gates on this expiring; add "
+            "enforcement (dashboard banner, WhatsApp reminder, order block, "
+            "etc.) once the desired behavior at trial-end is decided."
+    )
     card: Mapped["BetaCard"] = relationship(back_populates="signup")
 
 

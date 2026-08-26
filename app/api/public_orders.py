@@ -1,12 +1,13 @@
 import math
 import logging
 import time
+from datetime import datetime
 from typing import List, Optional, Union
 from collections import Counter
 from fastapi import APIRouter, HTTPException, Header, Depends, BackgroundTasks, Request, Cookie
 from pydantic import BaseModel, field_validator
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.orm import selectinload
 from jose import JWTError, jwt
 from app.core.config import settings
@@ -63,6 +64,21 @@ class CheckoutPayload(BaseModel):
     customer_name: Optional[str] = None
     customer_notes: Optional[str] = None
     items: List[CartItemPayload]
+    # Required — the PWA checkout button is disabled client-side until this
+    # is checked, and we re-validate server-side since the client can't be
+    # trusted (same principle as pricing/geo-fencing elsewhere in this file).
+    terms_accepted: bool
+    # Optional, defaults to opted-out — CNDP-compliant opt-in, not opt-out.
+    # Independent of terms_accepted and of DataDeletionRequest (see
+    # Customer.marketing_opt_in docstring in models.py).
+    marketing_opt_in: bool = False
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def must_accept_terms(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("You must accept the Terms of Service to place an order.")
+        return v
 
 async def verify_session_token(
     geqo_session: Optional[str] = Cookie(default=None),
@@ -167,10 +183,21 @@ async def process_checkout(
             latitude=payload.latitude,
             longitude=payload.longitude,
             customer_name=payload.customer_name,
-            customer_notes=payload.customer_notes
+            customer_notes=payload.customer_notes,
+            terms_accepted_at=datetime.utcnow()
         )
         db.add(new_order)
         await db.flush()
+
+        # Sync marketing consent to the Customer row on every checkout — the
+        # PWA shows this checkbox fresh each order, so a returning customer
+        # can change their mind at any time without a separate settings page.
+        # No-op (0 rows) if the Customer row doesn't exist yet; never blocks checkout.
+        await db.execute(
+            update(Customer)
+            .where(Customer.wa_id == wa_id)
+            .values(marketing_opt_in=payload.marketing_opt_in)
+        )
 
         for req_item in payload.items:
             if req_item.quantity < 1:
