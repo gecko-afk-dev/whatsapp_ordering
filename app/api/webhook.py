@@ -73,9 +73,12 @@ def generate_magic_link(wa_id: str, restaurant) -> str:
     from app.core.config import settings
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
     # Magic Link URL Construction Failsafe:
-    if getattr(restaurant, 'custom_domain', None):
-        base_url = f"https://{restaurant.custom_domain}"
-    elif restaurant.slug and restaurant.slug.strip():
+    # (Custom-domain-per-restaurant was scoped out — wildcard custom domains
+    # are a paid Cloudflare feature we're not adding to the expense list yet.
+    # Restaurant never had a custom_domain column, so this branch never fired
+    # for any restaurant, including the current test one — removing it is a
+    # no-op behaviorally.)
+    if restaurant.slug and restaurant.slug.strip():
         base_url = f"https://{restaurant.slug.strip()}.mygeqo.com"
     else:
         base_url = f"https://menu.mygeqo.com/menu/{restaurant.id}"

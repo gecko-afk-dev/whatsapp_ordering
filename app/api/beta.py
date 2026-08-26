@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import Dict, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import time
 
@@ -116,13 +116,16 @@ async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This email is already registered")
 
     # 4. Create BetaSignup record
+    # trial_days lives on the card so specific hand-pitched cards can be set
+    # to 30 before being handed out, while the default stays 14 for everyone else.
     new_signup = BetaSignup(
         card_id=card.id,
         manager_name=req.manager_name,
         restaurant_name=req.restaurant_name,
         email=req.email,
         whatsapp_number=req.whatsapp_number,
-        locale=req.locale
+        locale=req.locale,
+        trial_ends_at=datetime.utcnow() + timedelta(days=card.trial_days)
     )
     db.add(new_signup)
 
