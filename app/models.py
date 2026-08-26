@@ -405,10 +405,16 @@ class BetaSignup(Base):
     provisioned: Mapped[bool] = mapped_column(default=False)
     trial_ends_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True,
-        doc="Snapshot of card.trial_days added to the claim timestamp. Tracking "
-            "only for now — nothing currently gates on this expiring; add "
-            "enforcement (dashboard banner, WhatsApp reminder, order block, "
-            "etc.) once the desired behavior at trial-end is decided."
+        doc="Snapshot of card.trial_days added to the claim timestamp. A daily "
+            "send_trial_reminders.py run sends a WhatsApp nudge 3 days before "
+            "this passes (see trial_reminder_sent). Nothing currently blocks "
+            "orders or downgrades the account when it actually lapses — that's "
+            "still an open decision."
+    )
+    trial_reminder_sent: Mapped[bool] = mapped_column(
+        default=False,
+        doc="Set once send_trial_reminders.py has sent the 3-days-remaining "
+            "WhatsApp nudge for this signup, so the daily run never double-sends."
     )
     card: Mapped["BetaCard"] = relationship(back_populates="signup")
 
