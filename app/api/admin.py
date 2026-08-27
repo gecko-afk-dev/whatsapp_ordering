@@ -1,5 +1,6 @@
 import io
 import csv
+import time
 from fastapi.responses import StreamingResponse
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Header, Response
 import os
@@ -134,11 +135,45 @@ class WalletTransactionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# ---------------------------------------------------------------------------
+# Rate limiting — login attempts
+# ---------------------------------------------------------------------------
+# Mirrors the lightweight in-memory sliding-window pattern already used in
+# app/api/webhook.py (message rate limiting) and app/api/flow_handler.py
+# (_pin_rate_limited). Keyed by the submitted email (lowercased) so repeated
+# password guesses against one account are throttled regardless of source IP.
+_LOGIN_ATTEMPT_LOG: dict = {}
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = 300
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5
+
+
+def _login_rate_limited(email: str) -> bool:
+    """Returns True if this email has exceeded the login-attempt rate limit."""
+    now = time.time()
+    key = email.strip().lower()
+    attempts = [
+        t for t in _LOGIN_ATTEMPT_LOG.get(key, [])
+        if now - t < LOGIN_RATE_LIMIT_WINDOW_SECONDS
+    ]
+    if len(attempts) >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS:
+        _LOGIN_ATTEMPT_LOG[key] = attempts
+        return True
+    attempts.append(now)
+    _LOGIN_ATTEMPT_LOG[key] = attempts
+    return False
+
+
 # --- Authentication ---
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: LoginRequest, response: Response):
     """Login for admins and restaurant owners. Sets HTTP-only secure cookie with JWT."""
+    if _login_rate_limited(request.email):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please wait a few minutes and try again.",
+        )
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(UserModel)

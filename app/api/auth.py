@@ -4,6 +4,7 @@ from sqlalchemy.future import select
 from datetime import datetime, timedelta
 import secrets
 import re
+import time
 
 from app.core.database import AsyncSessionLocal
 from app.models import User
@@ -40,8 +41,42 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
 
+# ---------------------------------------------------------------------------
+# Rate limiting — forgot-password requests
+# ---------------------------------------------------------------------------
+# Same lightweight in-memory sliding-window pattern as app/api/webhook.py and
+# app/api/flow_handler.py. Keyed by the submitted email (lowercased) to stop
+# reset-spam / inbox-bombing against one target account. A rate-limited
+# request still returns the same generic message as a normal request, so
+# this does not create a new email-enumeration signal.
+_FORGOT_PASSWORD_ATTEMPT_LOG: dict = {}
+FORGOT_PASSWORD_RATE_LIMIT_WINDOW_SECONDS = 300
+FORGOT_PASSWORD_RATE_LIMIT_MAX_ATTEMPTS = 3
+
+
+def _forgot_password_rate_limited(email: str) -> bool:
+    """Returns True if this email has exceeded the forgot-password rate limit."""
+    now = time.time()
+    key = email.strip().lower()
+    attempts = [
+        t for t in _FORGOT_PASSWORD_ATTEMPT_LOG.get(key, [])
+        if now - t < FORGOT_PASSWORD_RATE_LIMIT_WINDOW_SECONDS
+    ]
+    if len(attempts) >= FORGOT_PASSWORD_RATE_LIMIT_MAX_ATTEMPTS:
+        _FORGOT_PASSWORD_ATTEMPT_LOG[key] = attempts
+        return True
+    attempts.append(now)
+    _FORGOT_PASSWORD_ATTEMPT_LOG[key] = attempts
+    return False
+
+
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):
+    if _forgot_password_rate_limited(request.email):
+        # Same generic response as the normal path — rate-limiting must not
+        # create a new signal an attacker can use to enumerate accounts.
+        return {"message": "If that email is registered, a reset link has been sent."}
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(User).where(User.email == request.email))
         user = result.scalar_one_or_none()
