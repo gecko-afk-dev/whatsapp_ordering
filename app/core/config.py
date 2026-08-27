@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     FEATURE_DRIVERS_ENABLED: bool = False
     FEATURE_AUDIT_LOGS_ENABLED: bool = False
 
+    # Security: the WhatsApp Flow endpoint (app/api/flow_handler.py) only
+    # accepts Meta's RSA/AES-GCM encrypted payloads by default. Set this to
+    # true ONLY in local development to test the endpoint without setting up
+    # encryption keys. Must stay false in any real deployment — the driver
+    # PIN-verification logic behind this endpoint has no other authentication.
+    ALLOW_UNENCRYPTED_FLOW_REQUESTS: bool = False
+
     # Cookie security — set COOKIE_SECURE=false in local HTTP dev environments.
     # Production must always keep COOKIE_SECURE=true.
     # COOKIE_SAMESITE="lax" is required when the frontend and API are on separate

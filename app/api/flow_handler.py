@@ -5,9 +5,11 @@ from sqlalchemy.orm import joinedload
 import os
 import json
 import base64
+import time
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from app.models import (
     Customer, Order, OrderStatus, Driver
 )
@@ -19,6 +21,32 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting — driver PIN-verification attempts
+# ---------------------------------------------------------------------------
+# Mirrors the lightweight in-memory pattern already used as the Redis
+# fallback in app/api/webhook.py. Keyed by wa_id (parsed from flow_token,
+# below), since that's the identity actually making PIN-guess attempts.
+_PIN_ATTEMPT_LOG: dict = {}
+PIN_RATE_LIMIT_WINDOW_SECONDS = 60
+PIN_RATE_LIMIT_MAX_ATTEMPTS = 5
+
+
+def _pin_rate_limited(wa_id: str) -> bool:
+    """Returns True if this wa_id has exceeded the PIN-attempt rate limit."""
+    now = time.time()
+    attempts = [
+        t for t in _PIN_ATTEMPT_LOG.get(wa_id, [])
+        if now - t < PIN_RATE_LIMIT_WINDOW_SECONDS
+    ]
+    if len(attempts) >= PIN_RATE_LIMIT_MAX_ATTEMPTS:
+        _PIN_ATTEMPT_LOG[wa_id] = attempts
+        return True
+    attempts.append(now)
+    _PIN_ATTEMPT_LOG[wa_id] = attempts
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +195,22 @@ async def flow_data_exchange(request: Request):
             # FIX: Return as raw Plain Text, NOT as JSON!
             return PlainTextResponse(content=encrypted_response)
 
-        # If not encrypted (local testing), return normal JSON
+        # Unencrypted requests are only accepted when explicitly enabled for
+        # local testing (ALLOW_UNENCRYPTED_FLOW_REQUESTS=true in .env, default
+        # false). In any real deployment this path must stay closed — Meta's
+        # RSA/AES-GCM encryption is the only thing standing between this
+        # endpoint and the driver PIN-verification logic below.
+        if not settings.ALLOW_UNENCRYPTED_FLOW_REQUESTS:
+            logger.warning(
+                "Rejected unencrypted request to /flow-endpoint "
+                "(ALLOW_UNENCRYPTED_FLOW_REQUESTS is false)."
+            )
+            return PlainTextResponse(
+                content="Unencrypted requests are not accepted.",
+                status_code=403,
+            )
+
+        # If not encrypted and explicitly allowed (local testing), return normal JSON
         logger.info(
             "Plain Flow Request: action=%s, screen=%s",
             payload.get("action"),
@@ -241,7 +284,17 @@ async def process_flow_request(payload: dict):
                 
                 if order.status == OrderStatus.DELIVERED:
                     return {"version": "3.0", "screen": "SUCCESS_SCREEN", "data": {"message": "Already delivered!"}}
-                
+
+                if _pin_rate_limited(wa_id):
+                    return {
+                        "version": "3.0",
+                        "screen": "CONFIRM_DELIVERY_SCREEN",
+                        "data": {
+                            "error_message": "Too many attempts. Please wait a minute and try again.",
+                            "order_id": order_id
+                        }
+                    }
+
                 # Check PIN
                 if not order.delivery_pin or order.delivery_pin.upper() != pin_entered:
                     return {
