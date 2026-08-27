@@ -69,18 +69,37 @@ TestingSessionLocal = sessionmaker(
     test_engine, class_=AsyncSession, expire_on_commit=False
 )
 
+# EventLog (and any other Postgres-schema-qualified table) can't be created
+# on the SQLite fallback engine — SQLite has no equivalent to a Postgres
+# schema, so Base.metadata.create_all() throws before this fixture ever
+# reaches its `yield`. Exclude schema-qualified tables when running on
+# SQLite; they simply won't exist for tests using the fallback engine.
+_TEST_DB_TABLES = [
+    t for t in Base.metadata.sorted_tables
+    if not ("sqlite" in TEST_DATABASE_URL and t.schema)
+]
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_test_db():
-    # Create all tables once for the test session
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-    
-    yield
-    
-    # Optionally drop tables or keep them for manual inspection
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    try:
+        # Create all tables once for the test session
+        async with test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all, tables=_TEST_DB_TABLES)
+            await conn.run_sync(Base.metadata.create_all, tables=_TEST_DB_TABLES)
+
+        yield
+
+        # Optionally drop tables or keep them for manual inspection
+        async with test_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all, tables=_TEST_DB_TABLES)
+    finally:
+        # Without this, an un-disposed aiosqlite connection under StaticPool
+        # leaves a non-daemon worker thread parked forever on queue.get(),
+        # which blocks the whole test process from exiting even after pytest
+        # has already reported results. This must run even if the block
+        # above raises (e.g. before this fix, the SQLite schema mismatch
+        # above threw before ever reaching yield).
+        await test_engine.dispose()
 
 @pytest_asyncio.fixture()
 async def db_session():
