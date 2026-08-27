@@ -1,5 +1,6 @@
 import logging
 import calendar
+import html
 from typing import Optional
 from datetime import datetime
 from fastapi.responses import Response
@@ -118,12 +119,18 @@ async def generate_monthly_insights_report(
     month_name = calendar.month_name[month]
 
     # Render Swiss Industrial HTML
+    # restaurant.name and row.name_fr are restaurant-owner-editable and are
+    # interpolated into raw HTML below (this endpoint can fall back to
+    # returning that HTML directly to the caller's browser — see the
+    # except ImportError/Exception branches at the bottom of this function —
+    # so unescaped values here are a stored-XSS vector against whoever views
+    # the report, including the platform SuperAdmin). Escape both.
     top_items_html = ""
     for idx, row in enumerate(top_items):
         top_items_html += f"""
         <div class="item-row">
             <span class="item-rank">{idx+1}</span>
-            <span class="item-name">{row.name_fr}</span>
+            <span class="item-name">{html.escape(str(row.name_fr))}</span>
             <span class="item-qty">x{row.qty}</span>
             <span class="item-rev">{row.rev:.2f} MAD</span>
         </div>
@@ -134,7 +141,7 @@ async def generate_monthly_insights_report(
     <html lang="fr">
     <head>
         <meta charset="utf-8">
-        <title>GEQO Rapport Mensuel - {restaurant.name}</title>
+        <title>GEQO Rapport Mensuel - {html.escape(str(restaurant.name))}</title>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;900&family=IBM+Plex+Sans:wght@400;600&display=swap');
             
@@ -296,7 +303,7 @@ async def generate_monthly_insights_report(
                     <p class="subtitle">Executive Summary · {month_name} {year}</p>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-family: 'Space Grotesk', sans-serif; font-weight: 900; color: #FAFAFA; font-size: 16px;">{restaurant.name}</div>
+                    <div style="font-family: 'Space Grotesk', sans-serif; font-weight: 900; color: #FAFAFA; font-size: 16px;">{html.escape(str(restaurant.name))}</div>
                     <div class="subtitle">ID: {restaurant.id}</div>
                 </div>
             </div>
