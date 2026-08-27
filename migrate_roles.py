@@ -12,13 +12,15 @@ Usage:
 
 import asyncio
 import os
+import sys
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:supersecret@db:5432/whatsapp_food"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    print("❌ DATABASE_URL environment variable is required.")
+    print("   Refusing to fall back to a hardcoded default credential.")
+    sys.exit(1)
 
 NEW_ROLES = ["cashier", "kitchen_staff"]
 

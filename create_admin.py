@@ -21,7 +21,11 @@ from app.models import Base, User, UserRole
 from app.core.auth import get_password_hash
 
 async def create_admin():
-    database_url = os.getenv('DATABASE_URL', 'postgresql+asyncpg://postgres:password123@db:5432/whatsapp_food')
+    database_url = os.getenv('DATABASE_URL')
+    if not database_url:
+        print("❌ DATABASE_URL environment variable is required.")
+        print("   Refusing to fall back to a hardcoded default credential.")
+        sys.exit(1)
 
     engine = create_async_engine(database_url, echo=True)
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
