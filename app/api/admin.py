@@ -173,7 +173,14 @@ async def login(request: LoginRequest, response: Response):
         )
 
         return TokenResponse(
-            access_token=access_token,  # Returned so KDS frontend captures JWT in localStorage for WebSocket subprotocol
+            # Only returned when COOKIE_SECURE is off (local HTTP dev), where the
+            # httpOnly cookie may not reliably reach a WS handshake. In any real
+            # deployment (COOKIE_SECURE=true, the default) this MUST stay None —
+            # the httpOnly cookie is the only session credential; never duplicate
+            # it into a JS-readable response body. See app/api/dashboard.py's
+            # websocket_endpoint, which already prefers the cookie and only
+            # falls back to the bearer subprotocol when no cookie is present.
+            access_token=access_token if not settings.COOKIE_SECURE else None,
             user={
                 "id": user.id,
                 "email": user.email,
