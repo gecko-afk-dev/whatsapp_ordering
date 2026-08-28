@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends, status
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import Dict, Tuple
+from typing import Dict, Literal, Optional, Tuple
 from datetime import datetime, timedelta
 import os
 import time
@@ -23,28 +23,46 @@ class BetaSignupRequest(BaseModel):
     card_code: str = Field(..., pattern=r"^GEQO-[A-Z0-9]{6}$")
     locale: str = Field(default="fr", pattern=r"^(en|fr|ar)$")
 
+
+class ContactRequest(BaseModel):
+    category: Literal["sales", "support"]
+    name: str = Field(..., min_length=1, max_length=200)
+    email: EmailStr
+    whatsapp: Optional[str] = None
+    message: str = Field(..., min_length=1, max_length=5000)
+    # Hidden anti-spam field — the real form never populates this. Bots that
+    # auto-fill every field will, so a non-empty value marks the submission
+    # as spam (see check_contact_rate_limit / contact_form below).
+    honeypot: Optional[str] = ""
+
 # Simple in-memory rate limiter: IP -> (count, reset_time)
 rate_limit_cache: Dict[str, Tuple[int, float]] = {}
 RATE_LIMIT_ENABLED = os.getenv("BETA_SIGNUP_RATE_LIMIT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("BETA_SIGNUP_RATE_LIMIT_MAX_REQUESTS", "20"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("BETA_SIGNUP_RATE_LIMIT_WINDOW_SECONDS", "300"))
 
-async def check_rate_limit(request: Request):
-    if not RATE_LIMIT_ENABLED:
-        return
-
-    # Retrieve the real client IP by checking proxy headers first.
-    # Cloudflare adds 'cf-connecting-ip', and reverse proxies add 'x-forwarded-for'.
+def _get_client_ip(request: Request) -> str:
+    """Retrieve the real client IP by checking proxy headers first.
+    Cloudflare adds 'cf-connecting-ip', and reverse proxies add 'x-forwarded-for'.
+    """
     client_ip = request.headers.get("cf-connecting-ip")
     if not client_ip:
         x_forwarded_for = request.headers.get("x-forwarded-for")
         if x_forwarded_for:
             # X-Forwarded-For can contain multiple IPs; the first one is the client.
             client_ip = x_forwarded_for.split(",")[0].strip()
-            
+
     if not client_ip:
         client_ip = request.client.host if request.client else "unknown"
-        
+
+    return client_ip
+
+
+async def check_rate_limit(request: Request):
+    if not RATE_LIMIT_ENABLED:
+        return
+
+    client_ip = _get_client_ip(request)
     current_time = time.time()
     
     if client_ip in rate_limit_cache:
@@ -57,6 +75,42 @@ async def check_rate_limit(request: Request):
             rate_limit_cache[client_ip] = (count + 1, reset_time)
     else:
         rate_limit_cache[client_ip] = (1, current_time + RATE_LIMIT_WINDOW_SECONDS)
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting — contact form submissions
+# ---------------------------------------------------------------------------
+# Mirrors the lightweight in-memory sliding-window pattern introduced for
+# /admin/login and /auth/forgot-password (see app/api/admin.py's
+# _login_rate_limited and app/api/auth.py's _forgot_password_rate_limited).
+# Keyed by client IP rather than email/account, since an anonymous contact-form
+# submitter has no stable identity to key on the way a login attempt does.
+_CONTACT_ATTEMPT_LOG: Dict[str, list] = {}
+CONTACT_RATE_LIMIT_WINDOW_SECONDS = 600
+CONTACT_RATE_LIMIT_MAX_ATTEMPTS = 5
+
+
+def _contact_rate_limited(ip: str) -> bool:
+    """Returns True if this IP has exceeded the contact-form rate limit."""
+    now = time.time()
+    attempts = [
+        t for t in _CONTACT_ATTEMPT_LOG.get(ip, [])
+        if now - t < CONTACT_RATE_LIMIT_WINDOW_SECONDS
+    ]
+    if len(attempts) >= CONTACT_RATE_LIMIT_MAX_ATTEMPTS:
+        _CONTACT_ATTEMPT_LOG[ip] = attempts
+        return True
+    attempts.append(now)
+    _CONTACT_ATTEMPT_LOG[ip] = attempts
+    return False
+
+
+async def check_contact_rate_limit(request: Request):
+    if _contact_rate_limited(_get_client_ip(request)):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please wait a few minutes and try again.",
+        )
 
 
 async def send_signup_emails_task(signup_id: int, manager_name: str, restaurant_name: str, email: str, whatsapp_number: str, card_code: str, locale: str):
@@ -161,5 +215,43 @@ async def beta_signup(req: BetaSignupRequest, db: AsyncSession = Depends(get_db)
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Signup was created but confirmation email could not be sent"
         )
-        
+
     return {"message": "Signup successful"}
+
+
+@router.post("/contact", dependencies=[Depends(check_contact_rate_limit)])
+async def contact_form(req: ContactRequest):
+    """Public Contact Us form (marketing site). Email-forward only — no
+    database persistence for v1. Routes to sales@mygeqo.com or
+    support@mygeqo.com depending on category, with reply-to set to the
+    submitter's own email.
+    """
+    # Honeypot: a hidden field real users never fill in. If it's non-empty,
+    # a bot filled every field on the form — silently accept without
+    # sending any email or revealing to the bot that it was caught.
+    if req.honeypot:
+        logger.info("Contact form honeypot triggered — submission discarded")
+        return {"success": True}
+
+    try:
+        email_sent = await EmailService.send_contact_message(
+            category=req.category,
+            name=req.name.strip(),
+            email=req.email,
+            whatsapp=req.whatsapp.strip() if req.whatsapp else None,
+            message=req.message.strip(),
+        )
+    except Exception as exc:
+        logger.exception("Contact form email dispatch failed for %s: %s", req.email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong. Please try again later."
+        ) from exc
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something went wrong. Please try again later."
+        )
+
+    return {"success": True}

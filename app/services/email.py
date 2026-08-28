@@ -37,7 +37,7 @@ class EmailService:
         }
 
     @staticmethod
-    async def _send_email_async(to_email: str, subject: str, text_content: str, html_content: str = None):
+    async def _send_email_async(to_email: str, subject: str, text_content: str, html_content: str = None, reply_to: str = None):
         """Send an email through the Resend HTTP API."""
         if not settings.RESEND_API_KEY:
             logger.error("Resend API key is not configured; skipping email delivery")
@@ -50,6 +50,8 @@ class EmailService:
             "text": text_content,
             "html": html_content or text_content,
         }
+        if reply_to:
+            payload["reply_to"] = [reply_to]
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -71,12 +73,12 @@ class EmailService:
             return False
 
     @staticmethod
-    async def _send_email_with_retries(to_email: str, subject: str, text_content: str, html_content: str = None, retries: int = 3, delay_seconds: float = 1.0):
+    async def _send_email_with_retries(to_email: str, subject: str, text_content: str, html_content: str = None, retries: int = 3, delay_seconds: float = 1.0, reply_to: str = None):
         """Retry transient email failures a few times before giving up."""
         last_error = None
         for attempt in range(retries):
             try:
-                return await EmailService._send_email_async(to_email, subject, text_content, html_content)
+                return await EmailService._send_email_async(to_email, subject, text_content, html_content, reply_to=reply_to)
             except Exception as exc:
                 last_error = exc
                 if attempt == retries - 1:
@@ -232,3 +234,38 @@ class EmailService:
         text_content = f"Click here to reset your password: {reset_link}"
         html_content = f"<p>Click <a href='{reset_link}'>here</a> to reset your password.</p>"
         return await EmailService._send_email_with_retries(email, subject, text_content, html_content)
+
+    @staticmethod
+    async def send_contact_message(category: str, name: str, email: str, message: str, whatsapp: str = None):
+        """Forwards a marketing-site Contact Us submission to the relevant mailbox.
+
+        No database persistence for v1 — this is an email-forward only. Reply-to
+        is set to the submitter's own address so the receiving team can just hit
+        reply.
+        """
+        target_email = "sales@mygeqo.com" if category == "sales" else "support@mygeqo.com"
+        subject = f"[GEQO Contact — {category.upper()}] {name}"
+
+        text_lines = [
+            f"Name: {name}",
+            f"Email: {email}",
+        ]
+        if whatsapp:
+            text_lines.append(f"WhatsApp: {whatsapp}")
+        text_lines.append("")
+        text_lines.append("Message:")
+        text_lines.append(message)
+        text_content = "\n".join(text_lines)
+
+        whatsapp_html = f"<p><strong>WhatsApp:</strong> {whatsapp}</p>" if whatsapp else ""
+        html_content = (
+            f"<p><strong>Name:</strong> {name}</p>"
+            f"<p><strong>Email:</strong> {email}</p>"
+            f"{whatsapp_html}"
+            f"<p><strong>Message:</strong></p>"
+            f"<p>{message}</p>"
+        )
+
+        return await EmailService._send_email_with_retries(
+            target_email, subject, text_content, html_content, reply_to=email
+        )
