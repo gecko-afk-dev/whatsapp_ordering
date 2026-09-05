@@ -34,6 +34,45 @@ class WhatsAppService:
             }
         )
 
+    async def send_template_message(
+        self, to_phone: str, template_name: str, params: list = None, lang_code: str = None
+    ):
+        """
+        Send a pre-approved WhatsApp message template.
+
+        Templates — unlike freeform text — are deliverable outside the 24-hour
+        customer service window, which is why the six order-lifecycle messages
+        moved onto them. `params` are positional and MUST match the {{n}} count
+        the template was registered with, in order; Meta rejects the send
+        otherwise.
+
+        The catalog of names and their arity lives in
+        app/services/message_templates.py.
+        """
+        from app.services.message_templates import TEMPLATE_LANGUAGE
+
+        components = []
+        if params:
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": str(p)} for p in params],
+                }
+            )
+
+        return await self._post(
+            {
+                "messaging_product": "whatsapp",
+                "to": to_phone,
+                "type": "template",
+                "template": {
+                    "name": template_name,
+                    "language": {"code": lang_code or TEMPLATE_LANGUAGE},
+                    "components": components,
+                },
+            }
+        )
+
     async def send_language_picker(self, to_phone: str):
         await self._post(
             {

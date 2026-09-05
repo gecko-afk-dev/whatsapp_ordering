@@ -12,6 +12,7 @@ from app.models import Customer, Restaurant, Order, OrderStatus, FulfillmentMeth
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.services.whatsapp import WhatsAppService
+from app.services.message_templates import TemplateKey
 from app.services.socket_manager import manager
 from app.services.order_service import OrderService
 from app.services.event_engine import fire_and_forget_event
@@ -342,9 +343,14 @@ async def handle_events(request: Request):
                                 order.status = OrderStatus.DISPATCHED
                                 await db.commit()
                                 
-                                # Notify customer
-                                cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "dispatched")
+                                # Notify customer — `order_dispatched` UTILITY
+                                # template. Bilingual on its own, so
+                                # customer.language is not consulted here.
+                                await wa_service.send_template_message(
+                                    order.customer_wa_id,
+                                    TemplateKey.ORDER_DISPATCHED,
+                                    [order.tracking_code, driver.name, order.delivery_pin or ""],
+                                )
                                 
                                 # Notify driver
                                 await wa_service._post({
@@ -526,8 +532,13 @@ async def handle_events(request: Request):
                         if order:
                             order.status = OrderStatus.PREPARING
                             await db.commit()
-                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "preparing")
+                            # Status transition is unchanged; only the outbound
+                            # message moves to the `order_in_kitchen` template.
+                            await wa_service.send_template_message(
+                                order.customer_wa_id,
+                                TemplateKey.ORDER_IN_KITCHEN,
+                                [order.tracking_code],
+                            )
                             
                             # Give manager next step
                             if order.fulfillment_method == FulfillmentMethod.DELIVERY:
@@ -574,8 +585,11 @@ async def handle_events(request: Request):
                         if order:
                             order.status = OrderStatus.CANCELLED
                             await db.commit()
-                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "cancelled")
+                            await wa_service.send_template_message(
+                                order.customer_wa_id,
+                                TemplateKey.ORDER_CANCELLED,
+                                [order.tracking_code],
+                            )
                             await wa_service.send_text_message(wa_id, f"Order #{order_id} has been rejected.")
                         return Response(status_code=200)
 
@@ -591,8 +605,14 @@ async def handle_events(request: Request):
                         if order:
                             order.status = OrderStatus.READY
                             await db.commit()
-                            cust_lang = (await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))).scalar_one_or_none() or "fr"
-                            await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "ready")
+                            # Pickup fulfilment only: the "Ready for Pickup"
+                            # button is only offered for pickup orders (delivery
+                            # orders get "Dispatch to Driver" instead).
+                            await wa_service.send_template_message(
+                                order.customer_wa_id,
+                                TemplateKey.ORDER_READY_PICKUP,
+                                [order.tracking_code],
+                            )
                             await wa_service.send_text_message(wa_id, f"Order #{order_id} marked as Ready.")
                         return Response(status_code=200)
 

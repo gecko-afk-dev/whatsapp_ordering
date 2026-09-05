@@ -7,7 +7,7 @@ import string
 def generate_tracking_code():
     return ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 from typing import List, Optional
-from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum, JSON
+from sqlalchemy import ForeignKey, String, DateTime, Float, Text, Enum, JSON, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -67,6 +67,12 @@ class SubscriptionTier(PyEnum):
     SCALE = "SCALE"
     MULTI = "MULTI"
 
+class MessageTemplateStatus(PyEnum):
+    """Mirrors Meta's message-template review states."""
+    PENDING = "pending"      # Submitted to Meta, awaiting review
+    APPROVED = "approved"    # Approved by Meta; safe to send
+    REJECTED = "rejected"    # Rejected by Meta; needs resubmission
+
 class DataDeletionStatus(PyEnum):
     PENDING = "pending"      # Received, within the 30-day CNDP SLA window
     COMPLETED = "completed"  # Erasure performed and confirmed by an admin
@@ -112,6 +118,15 @@ class Restaurant(Base):
     wa_phone_number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     api_token: Mapped[str] = mapped_column(Text)
     phone_number_id: Mapped[str] = mapped_column(String(50))
+    waba_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        doc="Meta WhatsApp Business Account ID. DISTINCT from phone_number_id: "
+            "the WABA owns the message-template catalog, the phone number ID "
+            "sends messages. Required to submit message templates via "
+            "POST /{waba_id}/message_templates. Each restaurant has its own "
+            "WABA (ADR001). Column pre-existed via "
+            "migrate_add_subscription_tier.py but was never mapped or captured."
+    )
     owner_wa_id: Mapped[str] = mapped_column(String(20))
     
     # Geo-Fencing & Delivery Fields
@@ -437,6 +452,46 @@ class DataDeletionRequest(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class RestaurantMessageTemplate(Base):
+    """
+    Per-restaurant registration record for one of GEQO's six fixed
+    order-lifecycle WhatsApp templates.
+
+    Each restaurant has its own WABA (ADR001), so every template must be
+    submitted to — and approved on — that restaurant's own WABA. This table is
+    the local mirror of that per-WABA approval state; the template BODY itself
+    is never stored here, because it is platform-owned and frozen in
+    app/services/message_templates.py. Storing the copy per restaurant would
+    make it look editable, which is exactly the WhatsApp policy risk this
+    design avoids.
+    """
+    __tablename__ = "restaurant_message_templates"
+    __table_args__ = (
+        UniqueConstraint("restaurant_id", "template_key", name="uq_restaurant_template_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"), index=True)
+    # Matches a key in app.services.message_templates.TEMPLATE_KEYS, and is also
+    # the template's registered name on Meta.
+    template_key: Mapped[str] = mapped_column(String(64), index=True)
+    # native_enum=False: stored as VARCHAR + CHECK, matching the precedent set by
+    # subscription_tier and DataDeletionRequest.status — avoids a Postgres
+    # CREATE TYPE/ALTER TYPE dependency for a low-cardinality status column.
+    meta_status: Mapped[MessageTemplateStatus] = mapped_column(
+        Enum(MessageTemplateStatus, native_enum=False, length=20),
+        default=MessageTemplateStatus.PENDING,
+        index=True,
+    )
+    meta_template_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    restaurant: Mapped["Restaurant"] = relationship()
 
 
 # ---------------------------------------------------------------------------

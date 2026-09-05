@@ -11,10 +11,11 @@ from fastapi.responses import PlainTextResponse
 from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.models import (
-    Customer, Order, OrderStatus, Driver
+    Order, OrderStatus, Driver
 )
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
+from app.services.message_templates import TemplateKey
 from app.services.event_engine import fire_and_forget_event
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -359,18 +360,16 @@ async def process_flow_request(payload: dict):
                 # Notify Dashboard
                 await manager.broadcast_to_restaurant(restaurant.id, {"event": "ORDER_STATUS_UPDATED", "order_id": order.id, "new_status": "delivered"})
                 
-                # Notify Customer
-                cust_req = await db.execute(select(Customer.language).where(Customer.wa_id == order.customer_wa_id))
-                cust_lang = cust_req.scalar_one_or_none() or "fr"
-                await wa_service.send_order_status_notification(order.customer_wa_id, cust_lang, order.tracking_code, "delivered")
-                
-                # Thank you message to customer
-                thank_you_map = {
-                    "fr": f"🙏 Merci pour votre commande #{order.tracking_code} ! À très bientôt.",
-                    "ar": f"🙏 شكراً لطلبك رقم {order.tracking_code}! نراكم قريباً.",
-                    "en": f"🙏 Thank you for your order #{order.tracking_code}! See you soon."
-                }
-                await wa_service.send_text_message(order.customer_wa_id, thank_you_map[cust_lang])
+                # Notify Customer — the `order_delivered` UTILITY template
+                # replaces BOTH the old status notification and the separate
+                # trilingual thank-you text that followed it. The template body
+                # is bilingual (EN + Darija) on its own, so customer.language is
+                # no longer consulted here.
+                await wa_service.send_template_message(
+                    order.customer_wa_id,
+                    TemplateKey.ORDER_DELIVERED,
+                    [order.tracking_code],
+                )
                 
                 # Success screen for driver
                 return {
