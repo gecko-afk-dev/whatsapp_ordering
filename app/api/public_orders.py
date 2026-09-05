@@ -20,6 +20,8 @@ from app.models import (
 from app.services.socket_manager import manager
 from app.services.whatsapp import WhatsAppService
 from app.services.order_service import OrderService
+from app.services.message_templates import TemplateKey
+from app.services.receipts import build_order_receipt_text
 from app.services.hours import is_restaurant_open
 from app.services.event_engine import queue_event
 
@@ -331,13 +333,35 @@ async def process_checkout(
         # Emit to KDS
         await manager.broadcast_to_restaurant(restaurant_id, {"event": "NEW_ORDER", "order_id": new_order.id})
 
-        # Send confirmation WhatsApp message to customer
-        cust_req = await db.execute(select(Customer.language).where(Customer.wa_id == wa_id))
-        cust_lang = cust_req.scalar_one_or_none() or "fr"
-        
+        # Send confirmation WhatsApp message to customer.
+        #
+        # This is now the `order_confirmed` UTILITY template, not freeform text.
+        # The template body is bilingual (EN + Darija) on its own, so
+        # customer.language is deliberately NOT consulted here any more.
         wa_service = WhatsAppService(token=restaurant.api_token, phone_id=restaurant.phone_number_id)
-        
-        await wa_service.send_order_confirmation(wa_id, cust_lang)
+
+        # Re-load the order with items, modifiers and menu items eagerly attached.
+        # build_order_receipt_text is synchronous, so a lazy relationship load
+        # from inside it would raise MissingGreenlet under async SQLAlchemy.
+        receipt_order = (await db.execute(
+            select(Order)
+            .where(Order.id == new_order.id)
+            .options(
+                selectinload(Order.items).selectinload(OrderItem.menu_item),
+                selectinload(Order.items)
+                .selectinload(OrderItem.modifiers)
+                .selectinload(OrderItemModifier.modifier_option),
+            )
+        )).scalar_one()
+
+        await wa_service.send_template_message(
+            wa_id,
+            TemplateKey.ORDER_CONFIRMED,
+            [
+                receipt_order.tracking_code,
+                build_order_receipt_text(receipt_order, restaurant),
+            ],
+        )
         await wa_service.notify_manager_new_order(restaurant.owner_wa_id, new_order.id, new_order.total_price, new_order.fulfillment_method.value)
 
         # 5. Emit instrumentation events (non-blocking, runs after response)

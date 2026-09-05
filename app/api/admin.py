@@ -15,14 +15,15 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.config import settings
-from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, User, get_password_hash, verify_password, create_access_token
+from app.core.auth import get_current_admin, get_current_restaurant_owner, get_current_user, get_current_cashier_or_above, get_manager_or_admin, User, get_password_hash, verify_password, create_access_token
 from app.core.tier_guards import require_feature
 from app.services.email import EmailService
 from app.services.pdf_generator import generate_monthly_insights_report
 import secrets
 from app.models import (
     Restaurant, RestaurantStatus, PaymentStatus, Order, OrderStatus,
-    User as UserModel, UserRole, MenuItem, AuditLog, WalletTransaction, TransactionType
+    User as UserModel, UserRole, MenuItem, AuditLog, WalletTransaction, TransactionType,
+    RestaurantMessageTemplate
 )
 
 router = APIRouter()
@@ -69,6 +70,9 @@ class RestaurantCreate(BaseModel):
     wa_phone_number: str
     api_token: Optional[str] = None  # If omitted, the platform master token is used
     phone_number_id: str
+    # Meta WhatsApp Business Account ID — distinct from phone_number_id.
+    # Required to submit message templates (POST /{waba_id}/message_templates).
+    waba_id: Optional[str] = None
     owner_wa_id: str
     address: Optional[str] = None
     city: Optional[str] = None
@@ -81,6 +85,9 @@ class RestaurantUpdate(BaseModel):
     wa_phone_number: Optional[str] = None
     api_token: Optional[str] = None
     phone_number_id: Optional[str] = None
+    # Meta WhatsApp Business Account ID — distinct from phone_number_id.
+    # Required to submit message templates (POST /{waba_id}/message_templates).
+    waba_id: Optional[str] = None
     owner_wa_id: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
@@ -517,6 +524,7 @@ async def create_restaurant(
             wa_phone_number=restaurant.wa_phone_number,
             api_token=restaurant.api_token or settings.WHATSAPP_API_TOKEN,
             phone_number_id=restaurant.phone_number_id,
+            waba_id=restaurant.waba_id,
             owner_wa_id=restaurant.owner_wa_id,
             address=restaurant.address,
             city=restaurant.city,
@@ -562,6 +570,7 @@ async def list_restaurants(current_user: User = Depends(get_current_admin)):
             "wa_phone_number": r.wa_phone_number,
             "api_token": r.api_token,
             "phone_number_id": r.phone_number_id,
+            "waba_id": r.waba_id,
             "owner_wa_id": r.owner_wa_id,
             "address": r.address,
             "city": r.city,
@@ -714,6 +723,127 @@ async def activate_restaurant(
         return {"message": "Restaurant activated"}
 
 # --- Restaurant Owner Routes ---
+
+# ── WhatsApp order-lifecycle message templates ────────────────────────────
+#
+# The six template bodies are platform-owned and frozen in
+# app/services/message_templates.py. There is deliberately NO endpoint to edit
+# them: WhatsApp classifies a template by its rendered content, so letting a
+# restaurant slip promotional copy into a UTILITY template would put the WABA
+# at risk. Everything below is read-only or a registration action.
+
+@router.get("/restaurant/message-templates", response_model=dict)
+async def list_message_templates(current_user: User = Depends(get_current_cashier_or_above)):
+    """
+    Read-only feed for the dashboard's Message Templates preview page.
+
+    Returns the fixed catalog copy alongside this restaurant's live Meta
+    approval status per template. `waba_id_missing` tells the UI to show the
+    "WABA ID required — contact GEQO support" state instead of a broken list.
+    """
+    from app.services.message_templates import ORDER_LIFECYCLE_TEMPLATES
+
+    if not current_user.restaurant_id:
+        raise HTTPException(status_code=400, detail="User is not attached to a restaurant.")
+
+    async with AsyncSessionLocal() as db:
+        restaurant = (await db.execute(
+            select(Restaurant).where(Restaurant.id == current_user.restaurant_id)
+        )).scalar_one_or_none()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+
+        rows = (await db.execute(
+            select(RestaurantMessageTemplate).where(
+                RestaurantMessageTemplate.restaurant_id == restaurant.id
+            )
+        )).scalars().all()
+        by_key = {r.template_key: r for r in rows}
+
+        return {
+            "waba_id_missing": not restaurant.waba_id,
+            "templates": [
+                {
+                    "key": t["key"],
+                    "label": t["label"],
+                    "description": t["description"],
+                    "body": t["body"],
+                    "variables": t["variables"],
+                    "meta_status": (
+                        by_key[t["key"]].meta_status.value
+                        if t["key"] in by_key else None
+                    ),
+                    "submitted_at": (
+                        by_key[t["key"]].submitted_at.isoformat()
+                        if t["key"] in by_key and by_key[t["key"]].submitted_at else None
+                    ),
+                }
+                for t in ORDER_LIFECYCLE_TEMPLATES
+            ],
+        }
+
+
+@router.post("/restaurant/{restaurant_id}/provision-templates", response_model=dict)
+async def provision_restaurant_message_templates(
+    restaurant_id: int,
+    current_user: User = Depends(get_manager_or_admin)
+):
+    """
+    Submit GEQO's six fixed order-lifecycle templates to this restaurant's WABA.
+
+    Manual, admin-triggered action: GEQO staff click this once per restaurant
+    after onboarding. Automatic submission at Embedded Signup time is out of
+    scope — Embedded Signup itself does not exist yet.
+
+    Safe to re-run: Meta's duplicate-name error is treated as already-registered,
+    and a single template failing does not abort the rest of the batch.
+    """
+    from app.services.template_provisioning import provision_restaurant_templates
+
+    # Non-admins may only provision their OWN restaurant.
+    if current_user.role != UserRole.ADMIN and current_user.restaurant_id != restaurant_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this restaurant.")
+
+    async with AsyncSessionLocal() as db:
+        restaurant = (await db.execute(
+            select(Restaurant).where(Restaurant.id == restaurant_id)
+        )).scalar_one_or_none()
+        if not restaurant:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+
+        try:
+            results = await provision_restaurant_templates(db, restaurant)
+        except ValueError as exc:
+            # No waba_id set — actionable 400, not a 500.
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        succeeded = [r for r in results if r.get("ok")]
+
+        from app.services.audit import log_audit_action
+        await log_audit_action(
+            db=db,
+            actor_user_id=current_user.id,
+            actor_email=current_user.email,
+            action="MESSAGE_TEMPLATES_PROVISIONED",
+            target=f"restaurant_id={restaurant_id}",
+            detail={
+                "waba_id": restaurant.waba_id,
+                "submitted": len(results),
+                "succeeded": len(succeeded),
+                "failed": [r["template_key"] for r in results if not r.get("ok")],
+            },
+            # Explicit: a platform admin provisioning on a restaurant's behalf
+            # has no restaurant_id of their own, and the log belongs to the
+            # restaurant that was provisioned.
+            restaurant_id=restaurant_id,
+        )
+        await db.commit()
+
+        return {
+            "message": f"Submitted {len(succeeded)} of {len(results)} templates to Meta.",
+            "results": results,
+        }
+
 
 @router.get("/restaurant/dashboard")
 async def get_restaurant_dashboard(current_user: User = Depends(get_current_cashier_or_above)):
@@ -1083,6 +1213,9 @@ class BetaSignupResponse(BaseModel):
 class ProvisionRequest(BaseModel):
     phone_number_id: str = Field(..., min_length=1)
     wa_phone_number: str = Field(..., pattern=r"^\+?[0-9]{9,15}$")
+    # Meta WhatsApp Business Account ID — distinct from phone_number_id.
+    # Required to submit message templates (POST /{waba_id}/message_templates).
+    waba_id: Optional[str] = None
     owner_wa_id: Optional[str] = None
 
 
@@ -1172,6 +1305,7 @@ async def provision_beta_signup(
             wa_phone_number=payload.wa_phone_number,
             api_token=settings.WHATSAPP_API_TOKEN,
             phone_number_id=payload.phone_number_id,
+            waba_id=payload.waba_id,
             owner_wa_id=payload.owner_wa_id or signup.whatsapp_number,
             contact_email=signup.email,
             status=RestaurantStatus.ACTIVE,
